@@ -1,0 +1,26 @@
+{
+  "skill_name": "igv-reports",
+  "evals": [
+    {
+      "id": 0,
+      "name": "viral-integration-cohort-html",
+      "prompt": "I have 9 viral integration breakpoints across 6 ATLL patients in hg38. Per-patient sites BEDs are at /data1/greenbab/projects/ont/Project_17424/results/20260503_hg38plusHTLV1EBV_cohort_integration_igvreports/inputs/<patient>/sites.bed (already on disk; one row per integration). Cohort BAMs are at /data1/greenbab/projects/ont/Project_17424/analysis/htlv1_offshelf_eval/20260501_hg38plusHTLV1EBV_cohort/realign/<patient>_{tumor,normal}.combined.bam, and per-patient Severus VCFs at /data1/greenbab/projects/ont/Project_17424/analysis/htlv1_offshelf_eval/20260501_hg38plusHTLV1EBV_cohort/severus/<patient>/viral_integrations.all.vcf. Build me self-contained HTML reports — one per patient — with CpG islands, gencode genes, and RepeatMasker tracks loaded by default, plus a cohort index page so I can click through them. They need to open offline (no internet, no IGV install) and the filenames should pass our genome-tag enforcement hook. Don't actually run create_report end-to-end — produce the driver script, samplesheet, and a clear set of commands that would do the job.",
+      "expected_output": "A driver script + samplesheet TSV + ready-to-run command(s) that, when executed, produce per-patient {patient}.hg38.html plus index.html under a results dir. Must use --standalone, default tracks resolved from databases_config.yaml, --flanking 300, and genome-tagged filenames.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "bgzip-vs-gzip-debugging",
+      "prompt": "I'm trying to make an HTML IGV report for some structural variants and create_report keeps crashing on my gencode annotation. The error is: `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x8b in position 1: invalid start byte` reading /data1/greenbab/database/gencode_annotations/hg38/SOMEFILE.gff3.gz. I checked, the file has a .gz extension and gunzip works on it. What's wrong and how do I fix it cleanly without breaking other people's pipelines that already use this file?",
+      "expected_output": "Diagnosis: file is plain gzip, not bgzip; igv-reports needs bgzip + tabix. Fix: gunzip → sort by chr+pos → bgzip → tabix, with a backup of the original (so other consumers keep working until they re-fetch). Should explicitly mention `file <name>` to check for 'extra field' as the bgzip indicator.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "mouse-mm10-region-inspection",
+      "prompt": "Got a list of 12 ChIP-seq peaks in mouse mm10 that I want to visually QC against my immunoprecipitated and input BAMs. Peaks are in peaks.bed (chr/start/end/name format). I want a single self-contained HTML I can open on my laptop tonight on the train, with the peaks each clickable. Default tracks should include the gene annotation, CpG islands, and repeats so I can see what each peak overlaps. Produce the exact command(s) — assume the BAMs are at ./data/{ip,input}.bam.",
+      "expected_output": "A single create_report invocation (or driver-script call) using mm10 paths from databases_config.yaml. Must pass --standalone. Tracks should include CpG islands and gene annotation for mm10; should handle the mm10 RepeatMasker correctly (which IS in YAML). Output HTML must include 'mm10' in the filename.",
+      "files": []
+    }
+  ]
+}

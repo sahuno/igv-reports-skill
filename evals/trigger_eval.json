@@ -1,0 +1,22 @@
+[
+  {"query": "I have 8 fusion breakpoints called in tumor.bam — can you make me a clickable HTML I can email my collaborator? They have no IGV install and we're aiming for offline review.", "should_trigger": true},
+  {"query": "/igv-reports for the new SV calls", "should_trigger": true},
+  {"query": "Can you generate a self-contained HTML viewer for these structural variants? offline-only, please — I'm reviewing on a flight tonight", "should_trigger": true},
+  {"query": "build me an igv-report for the cohort viral integrations", "should_trigger": true},
+  {"query": "I want a single browser file showing the read evidence at each breakpoint — needs to run on my laptop with no internet", "should_trigger": true},
+  {"query": "Got 50 SNV calls in tumor-vs-normal — give me an HTML where I can click through each variant and see the supporting reads in IGV-style view", "should_trigger": true},
+  {"query": "create_report keeps dying with UnicodeDecodeError 0x8b on my GTF, help — my gencode is gunzip-able but igv-reports refuses it", "should_trigger": true},
+  {"query": "Need an offline IGV-style report for these 12 ROIs in mm10, BAMs are at /data/ip.bam and /data/input.bam, with default cpg+genes+repeats tracks", "should_trigger": true},
+  {"query": "make a static HTML viewer for these regions with cpg islands + genes + repeats, one HTML per patient + a cohort index", "should_trigger": true},
+  {"query": "The Severus VCF has 12 viral integration breakpoints and I want each clickable with read evidence — what's the fastest way to give my PI an HTML to review?", "should_trigger": true},
+  {"query": "Take an IGV screenshot at chr2:25M with this BAM and save it as PNG — need the figure for slides", "should_trigger": false},
+  {"query": "Generate a static PNG figure of the methylation calls at this locus, suitable for the manuscript", "should_trigger": false},
+  {"query": "I need a publication-quality PDF figure of the ChIP peaks at the FOXA1 promoter for our paper", "should_trigger": false},
+  {"query": "Can you call SVs from these long-read BAMs? Tumor and normal, somatic mode, want a VCF — I'll worry about visualization later", "should_trigger": false},
+  {"query": "Generate a Snakemake workflow for the integration calling — Severus + matched normal, scaling to 6 patients on SLURM", "should_trigger": false},
+  {"query": "Index this BAM with samtools so I can use it in downstream tools — got a 200 GB ONT BAM with no .bai sidecar", "should_trigger": false},
+  {"query": "Convert this VCF to a BED file of breakpoint coordinates so I can intersect with CpG islands", "should_trigger": false},
+  {"query": "What does the SVTYPE=INS field with ALIGNED_POS=HTLV1 mean in Severus output?", "should_trigger": false},
+  {"query": "samtools view --output-fmt SAM tumor.bam chr9:34913979-34914000 | head — show me the supporting reads at the breakpoint", "should_trigger": false},
+  {"query": "I want to compare tumor and normal coverage interactively in IGV desktop — help me set up a session file with the right tracks loaded for local IGV use", "should_trigger": false}
+]
