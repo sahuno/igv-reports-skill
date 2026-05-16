@@ -3,7 +3,7 @@ name: igv-reports
 description: |
   Build self-contained, offline HTML genomic-region reports with igv-reports (create_report). Each HTML bundles igv.js viewers per region with embedded BAM/VCF data slices and default tracks (CpG islands, gencode, RepeatMasker); a reviewer clicks the variant table to inspect read-level evidence with no internet, no server, no IGV install.
 
-  USE this skill whenever the user wants an HTML, clickable, or browseable viewer of genomic data — phrases like "HTML IGV report", "offline IGV", "self-contained HTML", "clickable viewer", "create_report", "igv-reports", "email this viewer", or any browseable HTML of reads at variants, fusion breakpoints, SV junctions, viral integrations, ChIP peaks, or ROIs. Trigger even when the user doesn't say "igv-reports" — giveaway is HTML/clickable/offline plus genomic regions. Also fire on /igv-reports.
+  USE this skill whenever the user wants an HTML, clickable, or browseable viewer of genomic data — phrases like "HTML IGV report", "offline IGV", "self-contained HTML", "clickable viewer", "create_report", "igv-reports", "email this viewer", or any browseable HTML of reads at variants, fusion breakpoints, SV junctions, viral integrations, ChIP peaks, ROIs, or ONT 5mC/5hmC methylation views at promoters/gene bodies/DMRs. Trigger even when the user doesn't say "igv-reports" — giveaway is HTML/clickable/offline plus genomic regions. Also fire on /igv-reports.
 
   DO NOT use for static PNG/PDF/SVG IGV screenshots — use the igv-screenshots skill.
 
@@ -231,9 +231,57 @@ The `examples/` directory has runnable templates:
 - `single_sample.sh` — one BAM + one VCF + a sites BED → one HTML.
 - `cohort_samplesheet.sh` — TSV-driven multi-sample run.
 - `prep_track_demo.sh` — convert a plain-gzip gencode to bgzip+tabix.
+- `methylation_ont/` — ONT 5mC/5hmC viewer (BAM with `colorBy: basemod2`
+  + per-sample bedGraph at fixed y-axis 0..100). End-to-end worked
+  example with pre-sliced data; recipe.md explains the slots.
 
 These are reference implementations; copy and edit them for new runs
 rather than starting from scratch.
+
+## ONT methylation viewers (specialized path)
+
+For per-read 5mC/5hmC visualization the positional `--tracks` API does
+not work — you need named tracks with `colorBy: "basemod2"` on the BAMs
+and `min: 0, max: 100` on the bedGraph tracks (cross-sample y-axis lock,
+see `rules/igv.md`). Use the `--track-config <json>` passthrough:
+
+```bash
+# 1. Write a YAML spec listing samples (see tracks_spec.example.yaml).
+# 2. Generate tracks.json with the right defaults baked in:
+python scripts/generate_tracks_json.py \
+    --spec tracks_spec.yaml --run-dir results/<run>/ \
+    --out results/<run>/tracks.json
+
+# 3. Build the report:
+python scripts/build_igvreports.py \
+    --sites results/<run>/sites.hg38.bed \
+    --track-config results/<run>/tracks.json \
+    --genome hg38 --flanking 0 \
+    --type mutation --info-columns name \
+    --output results/<run>/methylation_report.hg38.html
+```
+
+Key methylation-specific defaults:
+- `--flanking 0` (sites BED already encodes the window — promoter/gene span).
+- `--info-columns name` (surface the BED `name` column in the variant table).
+- `--type mutation` (one-locus view per row; not split-screen).
+- bedGraph not bigwig — igv-reports cannot slice `.bw` directly.
+
+When `--track-config` is set the driver bypasses the auto-resolved
+default annotation tracks (CGI / gencode / rmsk) and the `--bam` /
+`--vcf` / `--extra-track` flags — the JSON is the source of truth.
+Build annotation slices into the JSON instead.
+
+**`--apptainer` is auto-detected**: the driver flips to the dedicated
+igv-reports 1.16.0 SIF (`/data1/greenbab/users/ahunos/apps/containers/igv-reports_1.16.0.sif`,
+83 MB, pulled from Galaxy depot) when `SLURM_JOB_ID` is in the
+environment — i.e. running on a compute node where the NFS conda
+cold-start tax matters (`rules/apptainer_vs_conda.md`). On the login
+node it stays on the conda env. Override with `--apptainer` /
+`--no-apptainer`; the decision lands in the run log.
+
+Full recipe and rationale: `references/methylation_ont.md`. Worked
+example with real data: `examples/methylation_ont/`.
 
 ## See also
 
@@ -243,9 +291,15 @@ rather than starting from scratch.
 - `references/databases_config_paths.md` — per-genome track availability
   matrix and exact YAML keys. Read this when adding a new genome or
   diagnosing a missing-track warning.
+- `references/methylation_ont.md` — ONT 5mC/5hmC cheat-sheet (colorBy,
+  min:0/max:100, flanking=0, bedGraph vs bigwig, EPDnew lookup).
 - `scripts/build_igvreports.py` — the driver. Reads `--samplesheet` or
   `--bam/--vcf` direct-args, resolves tracks, validates the sites BED,
-  writes the HTMLs and the run log.
+  writes the HTMLs and the run log. Supports `--track-config <json>`
+  passthrough for fully-styled track sets.
+- `scripts/generate_tracks_json.py` — YAML spec → tracks.json with
+  ONT-methylation defaults baked in (colorBy=basemod2, min:0/max:100,
+  group-paired Okabe-Ito colors).
 - `scripts/prep_track.sh` — gunzip → sort → bgzip → tabix utility.
 - `igv-screenshots` skill — the **static PNG/PDF/SVG** counterpart based
   on igver. Use it instead of this one when the deliverable is a

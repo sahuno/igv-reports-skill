@@ -1,0 +1,70 @@
+# tracks_spec.example.yaml
+# Input for: python scripts/generate_tracks_json.py --spec tracks_spec.example.yaml --out tracks.json
+#
+# Describes a methylation-viewer track set without having to hand-write the
+# full igv.js JSON. The generator handles:
+#   * BAM tracks  -> auto adds colorBy=basemod2, showSoftClips=false, displayMode=COLLAPSED
+#   * bedGraph    -> auto adds min:0, max:100 (methylation percent), type=wig
+#   * Annotation  -> picks an Okabe-Ito color per track index unless overridden
+#   * Groups      -> samples in group "normal" get one color pair, "tumor" gets another
+
+genome: hg38
+
+# Annotation tracks rendered top of viewer.
+annotation:
+  - name: Gencode v47 (promoter slice)
+    url: gencode.v47.promoter_regions.gtf.gz
+    indexURL: gencode.v47.promoter_regions.gtf.gz.tbi
+    format: gtf
+    displayMode: EXPANDED
+  - name: EPDnew promoters
+    url: annotation_slices/EPDnew.promoter_regions.bed
+    format: bed
+    color: "rgb(213,94,0)"     # Okabe-Ito vermillion
+    displayMode: EXPANDED
+  - name: CpG islands
+    url: annotation_slices/CpGIslands.promoter_regions.bed
+    format: bed
+    color: "rgb(0,158,115)"    # Okabe-Ito bluish-green
+    displayMode: EXPANDED
+  - name: RepeatMasker
+    url: annotation_slices/RepeatMasker.promoter_regions.bed
+    format: bed
+    color: "rgb(86,180,233)"   # Okabe-Ito sky-blue
+    displayMode: SQUISHED
+
+# Per-group sample colors for the 5mC/5hmC bedGraph pairs.
+# Each entry in `samples:` below picks one of these by `group:` key.
+group_colors:
+  normal:
+    "5mC":  "rgb(0,68,136)"     # dark blue
+    "5hmC": "rgb(204,121,167)"  # reddish-purple
+  tumor:
+    "5mC":  "rgb(213,94,0)"     # vermillion
+    "5hmC": "rgb(230,159,0)"    # orange
+
+# Per-sample tracks. The generator emits, for each sample:
+#   1. <name>          (BAM, basemod2 per-read view)
+#   2. <name> 5mC      (bedGraph, color from group_colors[group]["5mC"])
+#   3. <name> 5hmC     (bedGraph, color from group_colors[group]["5hmC"])
+samples:
+  - name: colo829bl_PAU59807
+    group: normal
+    bam: /data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829bl/sup/PAU59807.d052sup4305mCG_5hmCGvHg38.bam
+    bedgraph_5mC:  bedgraph_slices/colo829bl_PAU59807.5mC.bedgraph
+    bedgraph_5hmC: bedgraph_slices/colo829bl_PAU59807.5hmC.bedgraph
+  - name: colo829bl_PAU61427
+    group: normal
+    bam: /data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829bl/sup/PAU61427.d052sup4305mCG_5hmCGvHg38.bam
+    bedgraph_5mC:  bedgraph_slices/colo829bl_PAU61427.5mC.bedgraph
+    bedgraph_5hmC: bedgraph_slices/colo829bl_PAU61427.5hmC.bedgraph
+  - name: colo829_PAU59949
+    group: tumor
+    bam: /data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829/sup/PAU59949.d052sup4305mCG_5hmCGvHg38.bam
+    bedgraph_5mC:  bedgraph_slices/colo829_PAU59949.5mC.bedgraph
+    bedgraph_5hmC: bedgraph_slices/colo829_PAU59949.5hmC.bedgraph
+  - name: colo829_PAU61426
+    group: tumor
+    bam: /data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829/sup/PAU61426.d052sup4305mCG_5hmCGvHg38.bam
+    bedgraph_5mC:  bedgraph_slices/colo829_PAU61426.5mC.bedgraph
+    bedgraph_5hmC: bedgraph_slices/colo829_PAU61426.5hmC.bedgraph

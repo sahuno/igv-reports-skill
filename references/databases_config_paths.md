@@ -23,13 +23,18 @@ reference_genomes:
 
 ## Genome → track matrix
 
-| Genome key        | fasta | gtf  | CpGIslands | repMaskerBed | Notes |
-|-------------------|:-----:|:----:|:----------:|:------------:|-------|
-| `hg38`            |  ✅   |  ✅  |     ✅     |      ✅      | Full set. Skill prefers the bgzip+tabix `gencode.v47.annotation.gff3.gz` over the YAML `gtf` (richer transcript model). |
-| `mm10`            |  ✅   |  ✅  |     ✅     |      ✅      | Full set. |
-| `mm39`            |  ✅   |  ✅  |     ✅     |      ❌      | No rmsk in YAML — skill auto-skips with warning. |
-| `t2t_CHM13v2_plusY` | ✅ |  ✅  |     ✅     |      ❌      | No rmsk in YAML. CGI is at `/data1/greenbab/database/CpGIslands/t2t/chm13v2.0_CGI.bed`. |
-| `GRCh37`          |  ✅   |  ✅  |     ✅     |      ❌      | Plus tandem-repeats and gaps tracks not loaded by default. |
+| Genome key        | fasta | gtf  | CpGIslands | repMaskerBed | EPDnew | Notes |
+|-------------------|:-----:|:----:|:----------:|:------------:|:------:|-------|
+| `hg38`            |  ✅   |  ✅  |     ✅     |      ✅      |   ✅   | Full set. Skill prefers the bgzip+tabix `gencode.v47.annotation.gff3.gz` over the YAML `gtf` (richer transcript model). EPDnew keys: `EPDnewCoding`, `EPDnewNonCoding`. |
+| `mm10`            |  ✅   |  ✅  |     ✅     |      ✅      |   ❌   | Full set. |
+| `mm39`            |  ✅   |  ✅  |     ✅     |      ❌      |   ❌   | No rmsk in YAML — skill auto-skips with warning. |
+| `t2t_CHM13v2_plusY` | ✅ |  ✅  |     ✅     |      ❌      |   ❌   | No rmsk in YAML. CGI is at `/data1/greenbab/database/CpGIslands/t2t/chm13v2.0_CGI.bed`. |
+| `GRCh37`          |  ✅   |  ✅  |     ✅     |      ❌      |   ❌   | Plus tandem-repeats and gaps tracks not loaded by default. |
+
+The default-track auto-resolver loads CpGIslands + gtf + repMaskerBed.
+EPDnew is **not** loaded by default because it's methylation-specific;
+reference it explicitly via `--track-config tracks.json` when building
+a methylation viewer (see `references/methylation_ont.md`).
 
 ## hg38 special case — full gencode annotation
 

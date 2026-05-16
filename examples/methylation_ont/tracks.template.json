@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Gencode v47 (promoter slice)",
+    "url": "{{RUN_DIR}}/gencode.v47.promoter_regions.gtf.gz",
+    "indexURL": "{{RUN_DIR}}/gencode.v47.promoter_regions.gtf.gz.tbi",
+    "format": "gtf",
+    "type": "annotation",
+    "displayMode": "EXPANDED"
+  },
+  {
+    "name": "EPDnew promoters",
+    "url": "{{RUN_DIR}}/annotation_slices/EPDnew.promoter_regions.bed",
+    "format": "bed",
+    "type": "annotation",
+    "color": "rgb(213,94,0)",
+    "displayMode": "EXPANDED"
+  },
+  {
+    "name": "CpG islands",
+    "url": "{{RUN_DIR}}/annotation_slices/CpGIslands.promoter_regions.bed",
+    "format": "bed",
+    "type": "annotation",
+    "color": "rgb(0,158,115)",
+    "displayMode": "EXPANDED"
+  },
+  {
+    "name": "RepeatMasker",
+    "url": "{{RUN_DIR}}/annotation_slices/RepeatMasker.promoter_regions.bed",
+    "format": "bed",
+    "type": "annotation",
+    "color": "rgb(86,180,233)",
+    "displayMode": "SQUISHED"
+  },
+  {
+    "name": "{{NORMAL_SAMPLE_1}}",
+    "url": "{{NORMAL_BAM_1}}",
+    "indexURL": "{{NORMAL_BAM_1}}.bai",
+    "format": "bam",
+    "type": "alignment",
+    "colorBy": "basemod2",
+    "showSoftClips": false,
+    "displayMode": "COLLAPSED"
+  },
+  { "name": "{{NORMAL_SAMPLE_1}} 5mC",  "url": "{{RUN_DIR}}/bedgraph_slices/{{NORMAL_SAMPLE_1}}.5mC.bedgraph",  "format": "bedgraph", "type": "wig", "color": "rgb(0,68,136)",  "min": 0, "max": 100 },
+  { "name": "{{NORMAL_SAMPLE_1}} 5hmC", "url": "{{RUN_DIR}}/bedgraph_slices/{{NORMAL_SAMPLE_1}}.5hmC.bedgraph", "format": "bedgraph", "type": "wig", "color": "rgb(204,121,167)", "min": 0, "max": 100 },
+  {
+    "name": "{{TUMOR_SAMPLE_1}}",
+    "url": "{{TUMOR_BAM_1}}",
+    "indexURL": "{{TUMOR_BAM_1}}.bai",
+    "format": "bam",
+    "type": "alignment",
+    "colorBy": "basemod2",
+    "showSoftClips": false,
+    "displayMode": "COLLAPSED"
+  },
+  { "name": "{{TUMOR_SAMPLE_1}} 5mC",  "url": "{{RUN_DIR}}/bedgraph_slices/{{TUMOR_SAMPLE_1}}.5mC.bedgraph",  "format": "bedgraph", "type": "wig", "color": "rgb(213,94,0)",  "min": 0, "max": 100 },
+  { "name": "{{TUMOR_SAMPLE_1}} 5hmC", "url": "{{RUN_DIR}}/bedgraph_slices/{{TUMOR_SAMPLE_1}}.5hmC.bedgraph", "format": "bedgraph", "type": "wig", "color": "rgb(230,159,0)", "min": 0, "max": 100 }
+]
