@@ -19,6 +19,7 @@ EX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "${EX_DIR}/../.." && pwd)"
 GEN_TRACKS="${SKILL_DIR}/scripts/generate_tracks_json.py"
 BUILD="${SKILL_DIR}/scripts/build_igvreports.py"
+VERIFY="${SKILL_DIR}/scripts/verify_report.py"
 
 # --- edit these for your run --------------------------------------------------
 RUN_DIR="${EX_DIR}"                                  # where slices/ live
@@ -51,3 +52,13 @@ python "${BUILD}" \
     --output        "${OUT}"
 
 echo "Wrote: ${OUT}"
+
+# C) Post-render verification — confirm the HTML actually contains the regions
+#    and tracks we asked for. Writes verify.tsv next to the HTML.
+python "${VERIFY}" \
+    --html          "${OUT}" \
+    --sites         "${SITES}" \
+    --track-config  "${TRACKS_JSON}" \
+    --min-size-mb   1.0 \
+    --out           "${OUT%.html}.verify.tsv" \
+    --fail-on-fail

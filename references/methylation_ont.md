@@ -196,6 +196,31 @@ Run `bash examples/methylation_ont/build.sh` to regenerate the HTML;
 read `examples/methylation_ont/recipe.md` for the slot-by-slot guide
 to adapting it.
 
+## Post-render verification
+
+After building the HTML, run `scripts/verify_report.py` to confirm the
+embedded content matches your inputs (region count, coordinates, track
+names). For methylation viewers this catches the worst silent failure
+mode — a render that succeeded for the wrong samples — which the input-
+side validation alone can't catch.
+
+```bash
+python scripts/verify_report.py \
+    --html         methylation_report.hg38.html \
+    --sites        sites.hg38.bed \
+    --track-config tracks.json \
+    --min-size-mb  1.0 \
+    --out          methylation_report.verify.tsv \
+    --fail-on-fail
+```
+
+For `--track-config` builds the check uses the JSON's `name` fields; in
+the YAML spec consumed by `generate_tracks_json.py`, those names are the
+`name:` keys in `annotation:` and the auto-generated `<sample>`,
+`<sample> 5mC`, `<sample> 5hmC` labels per sample. Picking specific
+sample names in the YAML therefore drives the verifier's coverage —
+generic names like "sample1" weaken the check.
+
 ## Cross-references
 
 - `rules/igv.md` — bigwig-can't-be-sliced, y-axis-autoscale, UCSC

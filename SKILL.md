@@ -191,6 +191,38 @@ This costs you ~10 lines and gives the reviewer a full audit trail. For
 cohort runs, show the expanded form for ONE representative sample only —
 the others differ only in BAM/VCF paths.
 
+## Post-render verification
+
+`scripts/verify_report.py` parses a built HTML and confirms it actually
+contains what its inputs declared. Six checks: `html_exists`,
+`html_min_size`, `region_count` (tableJson rows == sites BED rows),
+`region_coords` (each BED row finds a matching `(chrom, start+1, end[, name])`
+in tableJson — BED is 0-based, the HTML stores 1-based start), `region_sessions`
+(sessionDictionary has one entry per row), and `tracks_present` (every
+`name` from `--track-config` or every basename from positional `--tracks`
+appears in the decoded igv.js session's `tracks[].name` list).
+
+```bash
+python scripts/verify_report.py \
+    --html         results/<run>/reports/sample.hg38.html \
+    --sites        results/<run>/inputs/sites.hg38.bed \
+    --track-config results/<run>/inputs/tracks.json \
+    --min-size-mb  1.0 \
+    --out          results/<run>/reports/sample.verify.tsv \
+    --fail-on-fail
+```
+
+Output is a TSV with columns `check / status / observed / expected / details`
+(also printed to stdout). With `--fail-on-fail`, exits nonzero if any check
+is FAIL — wire this into Snakemake / CI so the pipeline gates on render
+quality, not just on `create_report`'s exit code.
+
+NOTE: `--standalone` replaces every track URL with an inlined `data:` URL
+after slicing, so URL paths are unrecoverable from the embedded session.
+The check matches on track NAMES (which `--standalone` preserves) — for
+`--track-config` JSON pass meaningful names; positional `--tracks` mode
+uses basenames.
+
 ## Output and workflow logging
 
 Every run logs to `logs/run_<YYYYMMDD_HHMMSS>.log` next to the reports dir.
@@ -300,6 +332,10 @@ example with real data: `examples/methylation_ont/`.
 - `scripts/generate_tracks_json.py` — YAML spec → tracks.json with
   ONT-methylation defaults baked in (colorBy=basemod2, min:0/max:100,
   group-paired Okabe-Ito colors).
+- `scripts/verify_report.py` — post-render structural verifier; parses
+  the HTML's embedded tableJson + sessionDictionary, confirms region
+  count / coordinates / track names match the inputs. Emits a verify.tsv
+  and gates on `--fail-on-fail`.
 - `scripts/prep_track.sh` — gunzip → sort → bgzip → tabix utility.
 - `igv-screenshots` skill — the **static PNG/PDF/SVG** counterpart based
   on igver. Use it instead of this one when the deliverable is a
