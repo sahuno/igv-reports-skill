@@ -11,7 +11,12 @@ Supported by `create_report`:
   `--info-columns` you surface from INFO and `--sample-columns` from
   FORMAT. Use `--idlink "https://url/$$"` to make ID a clickable link.
 - **BED** — fields parsed by position: `chr / start / end [/ name]`.
-  **HEADERLESS** — a header row → `ValueError: invalid literal for int()`.
+  A **non-comment header row** (e.g., `chrom start end name`) crashes
+  `create_report` with `ValueError: invalid literal for int()` because
+  the parser tries to `int()` the string `start`. A `#`-prefixed comment
+  header (e.g., `#chrom\tstart\tend\tname`) IS accepted — `create_report`
+  skips lines starting with `#`. This matches the lab's "BED-like outputs
+  must have a `#`-prefixed header" convention in CLAUDE.md.
 - **MAF** — Mutation Annotation Format (TCGA standard).
 - **BEDPE** — paired-end / fusion / SV format. With `--type fusion` each
   row is rendered as a multi-locus split-screen view.
@@ -134,7 +139,7 @@ variant detail.
 
 | Symptom | Root cause | Fix |
 |---|---|---|
-| `ValueError: invalid literal for int() with base 10: 'start'` | Header row in BED sites file | Plain BED, no header |
+| `ValueError: invalid literal for int() with base 10: 'start'` | Non-comment header row in BED sites file | Prefix the header with `#` (skipped by create_report and matches lab convention); or strip it entirely |
 | `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x8b` | igv-reports reading bgzip as text (file actually plain-gzip but with `.gz` ext) | Convert with prep-track; verify with `file <name>` |
 | `tabix: not BGZF` | Plain gzip masquerading as `.gz` | `gunzip → bgzip → tabix` |
 | `tabix: out of order` | GFF/GTF/BED records not pos-sorted within chr | `sort -k1,1 -k4,4n` first |
