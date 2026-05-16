@@ -261,6 +261,78 @@ Worked regression: `examples/cohort_verify_demo/scenarios.sh` builds a
 HTML, sample swap, index drift, truncated HTML) triggers the expected
 check FAILs.
 
+### Content verification (`verify_anchors.py`) — opt-in, slow
+
+`verify_cohort.py` proves the HTML *says* the right thing. It can NOT
+confirm the embedded BAM *slice* contains the data it claims to. Two
+failure modes slip past structural checks:
+
+1. **Sample swap with matching basename** — the cohort loop wired the wrong
+   BAM into `sample_1`'s build, but the swapped BAM's `Path.stem` happens
+   to match what `sample_1`'s row declared (or two files in different dirs
+   share a basename). Track name passes; slice content is wrong.
+2. **Silent empty slice** — region rendered, but the slice has 0 reads
+   (failed `samtools index`, source BAM corruption, coords outside coverage).
+
+`scripts/verify_anchors.py` closes the gap by re-running `samtools view -c`
+against both the source BAM (at generate time) and the embedded slice (at
+verify time), then comparing counts. Two-mode workflow:
+
+```bash
+# 1. After the cohort renders cleanly, freeze the read counts as a regression fixture.
+python scripts/verify_anchors.py generate \
+    --samplesheet samplesheet.tsv \
+    --sites sites.hg38.bed \
+    --out anchors.hg38.tsv
+
+# 2. Re-verify any time after — works against a fresh build of the same inputs,
+#    or to audit an existing HTML for unexpected content drift.
+python scripts/verify_anchors.py verify-cohort \
+    --samplesheet samplesheet.tsv \
+    --reports-dir results/<run>/reports/ \
+    --genome hg38 \
+    --anchors anchors.hg38.tsv \
+    --out results/<run>/reports/cohort_verify_anchors.tsv \
+    --fail-on-fail
+```
+
+Or chained into the build driver:
+
+```bash
+# Freeze anchors at build time:
+python scripts/build_igvreports.py --samplesheet ... --anchors-mode generate \
+    --anchors anchors.hg38.tsv
+
+# Verify a later build against frozen anchors:
+python scripts/build_igvreports.py --samplesheet ... --anchors-mode verify \
+    --anchors anchors.hg38.tsv --fail-on-fail
+```
+
+Anchors TSV schema (`#`-prefixed header per lab BED convention):
+
+```
+#sample	track_name	chrom	start	end	expected	tolerance	min	max	notes
+```
+
+`tolerance` is a ratio (default 5%). `min`/`max` are absolute bounds that
+override tolerance when set — useful for known-positive sites like
+"this integration must have ≥20 reads".
+
+samtools is resolved in this order: `--samtools-sif PATH` → `$SAMTOOLS_SIF`
+→ `/data1/greenbab/users/ahunos/apps/containers/samtools_v1.23.1.sif` →
+PATH `samtools`. SIF preferred per `rules/apptainer_vs_conda.md`.
+
+**Why opt-in and not default:** the verify step shells out to samtools per
+(sample × region) and indexes each slice — ~1 s/anchor. For a 6-sample
+cohort × 50 regions that's ~5 min on top of the structural verify (which
+runs in seconds). Reach for this when sample swap or content regression
+is a real concern; the structural verifier is sufficient for routine builds.
+
+Worked regression: `examples/anchor_verify_demo/scenarios.sh` builds a
+2-sample cohort and asserts each of four content scenarios (tolerance
+violation, min-bound violation, corrupted slice, missing anchor) triggers
+the expected PASS / FAIL / SKIP outcome.
+
 ## Output and workflow logging
 
 Every run logs to `logs/run_<YYYYMMDD_HHMMSS>.log` next to the reports dir.
@@ -378,6 +450,11 @@ example with real data: `examples/methylation_ont/`.
   verify_report's per-sample checks, adds cross-sample contamination
   scanning + index.html / sample-id consistency. Auto-invoked at the end
   of `build_igvreports.py --samplesheet`; standalone-runnable too.
+- `scripts/verify_anchors.py` — content verifier; samtools-counts the
+  embedded BAM slices and compares to anchors frozen from the source BAMs
+  at build time. Catches sample swaps that share basenames and silent
+  empty slices. Opt-in via `--anchors-mode generate|verify` on the build
+  driver; slow (~1 s/anchor). See SKILL.md content-verification section.
 - `scripts/prep_track.sh` — gunzip → sort → bgzip → tabix utility.
 - `igv-screenshots` skill — the **static PNG/PDF/SVG** counterpart based
   on igver. Use it instead of this one when the deliverable is a

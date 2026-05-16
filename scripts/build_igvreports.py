@@ -381,6 +381,97 @@ def write_index(report_paths: dict[str, Path], out: Path, title: str) -> Path:
     return out
 
 
+def run_anchors_generate(
+    samplesheet: Path,
+    sites_files: list[Path],
+    out: Path,
+    fail_on_fail: bool,
+    log: logging.Logger,
+) -> None:
+    """Invoke `verify_anchors.py generate` once per distinct sites BED in the
+    cohort, merging into a single anchors TSV at `out`. Most cohorts share
+    one sites BED so this collapses to a single call; multi-sites cohorts
+    get one anchor block per sites file."""
+    script = Path(__file__).resolve().parent / "verify_anchors.py"
+    if not script.exists():
+        log.warning(f"anchors generate: script not found at {script} — skipping")
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("")  # truncate; per-sites blocks appended below
+    for i, sites in enumerate(sites_files):
+        block = out.with_suffix(f".part{i}.tsv")
+        cmd = [
+            sys.executable, str(script), "generate",
+            "--samplesheet", str(samplesheet),
+            "--sites", str(sites),
+            "--out", str(block),
+        ]
+        log.info(f"anchors generate: {' '.join(cmd)}")
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        for line in (proc.stdout or "").splitlines():
+            log.info(f"  anchors > {line}")
+        if proc.stderr:
+            for line in proc.stderr.splitlines():
+                log.info(f"  anchors (stderr) > {line}")
+        if proc.returncode != 0:
+            if fail_on_fail:
+                raise SystemExit(proc.returncode)
+            log.warning(f"anchors generate exited {proc.returncode}; continuing")
+            continue
+        # Merge: keep header from first block, body rows from all.
+        if i == 0:
+            out.write_text(block.read_text())
+        else:
+            with out.open("a") as fh:
+                for ln in block.read_text().splitlines():
+                    if not ln or ln.startswith("#"):
+                        continue
+                    fh.write(ln + "\n")
+        block.unlink()
+    log.info(f"anchors generate: wrote {out}")
+
+
+def run_anchors_verify(
+    samplesheet: Path,
+    reports_dir: Path,
+    genome: str,
+    anchors: Path,
+    fail_on_fail: bool,
+    log: logging.Logger,
+) -> None:
+    """Invoke `verify_anchors.py verify-cohort` after a cohort build."""
+    script = Path(__file__).resolve().parent / "verify_anchors.py"
+    if not script.exists():
+        log.warning(f"anchors verify: script not found at {script} — skipping")
+        return
+    if not anchors.exists():
+        log.warning(f"anchors verify: anchors TSV missing: {anchors} — skipping")
+        return
+    out = reports_dir / "cohort_verify_anchors.tsv"
+    cmd = [
+        sys.executable, str(script), "verify-cohort",
+        "--samplesheet", str(samplesheet),
+        "--reports-dir", str(reports_dir),
+        "--genome", genome,
+        "--anchors", str(anchors),
+        "--out", str(out),
+    ]
+    if fail_on_fail:
+        cmd.append("--fail-on-fail")
+    log.info(f"anchors verify: {' '.join(cmd)}")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    for line in (proc.stdout or "").splitlines():
+        log.info(f"  anchors > {line}")
+    if proc.stderr:
+        for line in proc.stderr.splitlines():
+            log.info(f"  anchors (stderr) > {line}")
+    log.info(f"anchors verify: TSV={out} exit={proc.returncode}")
+    if proc.returncode != 0:
+        if fail_on_fail:
+            raise SystemExit(proc.returncode)
+        log.warning(f"anchors verify exited {proc.returncode}; --fail-on-fail not set, continuing")
+
+
 def run_cohort_verify(
     samplesheet: Path,
     reports_dir: Path,
@@ -492,8 +583,26 @@ def main() -> None:
     ap.add_argument(
         "--fail-on-fail",
         action="store_true",
-        help="Propagated to verify_cohort.py: exit nonzero if any verifier "
-             "check is FAIL. Only meaningful with --verify and --samplesheet.",
+        help="Propagated to verify_cohort.py and verify_anchors.py: exit "
+             "nonzero if any verifier check is FAIL. Only meaningful with "
+             "--verify / --anchors-mode and --samplesheet.",
+    )
+    ap.add_argument(
+        "--anchors-mode",
+        choices=["off", "generate", "verify"],
+        default="off",
+        help="Content (read-count) verification — opt-in because it shells "
+             "out to samtools per (sample, region) and is slow. 'generate' "
+             "runs samtools view -c against source BAMs at build time and "
+             "freezes the counts to --anchors (becomes regression fixture). "
+             "'verify' decodes each BAM slice from the built HTMLs and "
+             "compares to --anchors. 'off' (default) skips. See "
+             "examples/anchor_verify_demo/.",
+    )
+    ap.add_argument(
+        "--anchors",
+        help="Path to anchors TSV. With --anchors-mode generate: output. "
+             "With --anchors-mode verify: input. Ignored when mode=off.",
     )
 
     args = ap.parse_args()
@@ -606,6 +715,29 @@ def main() -> None:
             )
         else:
             log.info("verify_cohort: skipped (--no-verify)")
+
+        if args.anchors_mode != "off":
+            if not args.anchors:
+                raise SystemExit("ERROR: --anchors PATH required when --anchors-mode != off")
+            anchors_path = Path(args.anchors)
+            if args.anchors_mode == "generate":
+                sites_files = sorted({Path(r["sites_bed"]) for r in rows if r.get("sites_bed")})
+                run_anchors_generate(
+                    samplesheet=Path(args.samplesheet),
+                    sites_files=sites_files,
+                    out=anchors_path,
+                    fail_on_fail=args.fail_on_fail,
+                    log=log,
+                )
+            else:  # verify
+                run_anchors_verify(
+                    samplesheet=Path(args.samplesheet),
+                    reports_dir=out_dir,
+                    genome=genome,
+                    anchors=anchors_path,
+                    fail_on_fail=args.fail_on_fail,
+                    log=log,
+                )
 
     log.info(f"=== DONE: build_igvreports.py completed successfully ===")
 
