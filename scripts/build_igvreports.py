@@ -57,6 +57,10 @@ DEFAULT_DBCONFIG = Path(
     "/data1/greenbab/users/ahunos/apps/llm_configs/claude/profiles/databases/databases_config.yaml"
 )
 DEFAULT_FLANKING = 300
+# Dedicated igv-reports 1.16.0 SIF (~83 MB), pulled from Galaxy depot.
+# Cleanest path for HPC: minimal payload vs. the heavier onttools_v3.10.sif
+# which incidentally bundles create_report alongside dorado/samtools/etc.
+IGVREPORTS_SIF = Path("/data1/greenbab/users/ahunos/apps/containers/igv-reports_1.16.0.sif")
 
 GENOME_ALIASES = {
     "hg38": "hg38",
@@ -168,8 +172,14 @@ def fasta_for(cfg: dict, genome: str) -> str:
 
 
 def validate_sites_bed(bed: Path) -> None:
-    """create_report's BED parser is positional; a header row → ValueError.
-    Catch this before invoking create_report so the error is informative."""
+    """Sanity-check the sites BED before invoking create_report.
+
+    create_report's BED parser is positional. It skips lines starting with
+    `#` or `track ` (so the lab's `#chrom\\tstart\\tend\\tname` header is
+    fine), but a non-comment header row like `chrom\\tstart\\tend` crashes
+    with `ValueError: invalid literal for int()`. We mirror create_report's
+    line-skipping logic and emit an informative error if any data row has
+    non-numeric start/end."""
     if not bed.exists():
         raise SystemExit(f"ERROR: sites BED not found: {bed}")
     with bed.open() as fh:
@@ -186,8 +196,9 @@ def validate_sites_bed(bed: Path) -> None:
             except ValueError:
                 raise SystemExit(
                     f"ERROR: {bed}:{i}: non-numeric start/end — likely a header row.\n"
-                    "       igv-reports' BED parser is positional and chokes on headers.\n"
-                    "       Strip the header and re-run."
+                    "       igv-reports' BED parser is positional and chokes on non-comment\n"
+                    "       headers. Prefix the header with `#` (skipped by create_report\n"
+                    "       and matches the lab's BED-output convention) or strip it."
                 )
             if start >= end:
                 raise SystemExit(f"ERROR: {bed}:{i}: start ({start}) >= end ({end})")
@@ -206,6 +217,30 @@ def find_create_report() -> str:
     )
 
 
+def apptainer_create_report_prefix(sif: Path) -> list[str]:
+    """Return the `singularity exec --cleanenv --bind /data1/greenbab <sif>
+    create_report` prefix. Used when --apptainer is passed; avoids the NFS
+    conda cold-start tax (rules/apptainer_vs_conda.md). The SIF is a dedicated
+    igv-reports container (igv-reports_1.16.0.sif, ~83 MB) pulled from the
+    Galaxy depot.
+
+    --cleanenv: scrubs host env vars so they don't leak into the SIF.
+    Specifically: host SSL_CERT_FILE / SSL_CERT_DIR on RHEL 8 point at paths
+    that don't exist inside Galaxy-depot SIFs, and create_report's standalone-
+    HTML build path performs an HTTPS GET (for the IGV.js ideogram or similar)
+    that aborts with `[SSL: CERTIFICATE_VERIFY_FAILED]`. See
+    rules/apptainer_env_leak.md. The driver wraps the invocation so users
+    don't need to remember the flag."""
+    if not sif.exists():
+        raise SystemExit(
+            f"ERROR: apptainer SIF not found: {sif}\n"
+            "       Pull with:\n"
+            "         wget -O /data1/greenbab/users/ahunos/apps/containers/igv-reports_1.16.0.sif \\\n"
+            "           'https://depot.galaxyproject.org/singularity/igv-reports:1.16.0--pyh7e72e81_0'"
+        )
+    return ["singularity", "exec", "--cleanenv", "--bind", "/data1/greenbab", str(sif), "create_report"]
+
+
 def build_one(
     sites: Path,
     bams: list[Path],
@@ -217,33 +252,71 @@ def build_one(
     title: str,
     flanking: int,
     log: logging.Logger,
+    track_config: Path | None = None,
+    report_type: str | None = None,
+    info_columns: list[str] | None = None,
+    use_apptainer: bool = False,
 ) -> Path:
-    """Run create_report for one site set and return the HTML path."""
+    """Run create_report for one site set and return the HTML path.
+
+    Two track modes:
+      * Default — positional `--tracks <path> <path> ...`. Used when
+        `track_config` is None. BAM + VCF + extra + default annotations,
+        in render order top-to-bottom.
+      * track-config — `--track-config <json>`. Used when `track_config`
+        is provided. The JSON is the source of truth; default_tracks,
+        bams, vcf, extra_tracks are IGNORED (they go in the JSON instead).
+        This is the path required for ONT methylation viewers (named
+        tracks, per-track color/min/max/colorBy/displayMode).
+    """
     validate_sites_bed(sites)
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    # Track ordering: BAMs (data) → VCF (calls) → extra → defaults (annotation, last).
-    tracks: list[str] = [str(b) for b in bams]
-    if vcf:
-        tracks.append(str(vcf))
-    tracks.extend(str(t) for t in extra_tracks)
-    tracks.extend(default_tracks)
+    create_report_cmd = (
+        apptainer_create_report_prefix(IGVREPORTS_SIF) if use_apptainer
+        else [find_create_report()]
+    )
 
-    cmd: list[str] = [
-        find_create_report(),
+    cmd: list[str] = list(create_report_cmd) + [
         str(sites),
         "--fasta", fasta,
         "--flanking", str(flanking),
-        "--tracks", *tracks,
+    ]
+
+    if track_config is not None:
+        cmd.extend(["--track-config", str(track_config)])
+        log.info(f"  track-config: {track_config}  (defaults+bams+vcf bypassed)")
+        if bams or vcf or extra_tracks or default_tracks:
+            log.warning(
+                "--track-config supplied; ignoring --bam/--vcf/--extra-track and "
+                "auto-resolved default tracks. Put everything in the JSON instead."
+            )
+    else:
+        # Track ordering: BAMs (data) -> VCF (calls) -> extra -> defaults (annotation, last).
+        tracks: list[str] = [str(b) for b in bams]
+        if vcf:
+            tracks.append(str(vcf))
+        tracks.extend(str(t) for t in extra_tracks)
+        tracks.extend(default_tracks)
+        cmd.extend(["--tracks", *tracks])
+        log.info(f"  tracks (in render order):")
+        for i, t in enumerate(tracks, start=1):
+            log.info(f"    {i:>2}. {t}")
+
+    if report_type:
+        cmd.extend(["--type", report_type])
+    if info_columns:
+        cmd.extend(["--info-columns", *info_columns])
+
+    cmd.extend([
         "--standalone",
         "--title", title,
         "--output", str(output),
-    ]
+    ])
+
     log.info(f"  cmd: {' '.join(cmd)}")
     log.info(f"  flanking_bp: {flanking}")
-    log.info(f"  tracks (in render order):")
-    for i, t in enumerate(tracks, start=1):
-        log.info(f"    {i:>2}. {t}")
+
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         log.error(f"create_report FAILED for {sites}")
@@ -273,6 +346,25 @@ def parse_samplesheet(path: Path) -> list[dict]:
             "       Optional columns: bam_tumor, bam_normal, vcf, extra_tracks (comma-separated)."
         )
     return rows
+
+
+def derive_log_path(out_dir: Path, override: Path | None = None) -> Path:
+    """Choose a log dir matching the lab's `results/<run>/{reports,logs}/`
+    sibling layout when possible. Fall back to `out_dir/logs/` (in-dir) when
+    the sibling can't be created — `out_dir.parent` is root, read-only, or
+    otherwise unwritable. Honor an explicit `override` unconditionally."""
+    if override is not None:
+        log_dir = override
+    else:
+        out_dir = out_dir.resolve()
+        sibling = out_dir.parent / "logs"
+        try:
+            sibling.mkdir(parents=True, exist_ok=True)
+            log_dir = sibling
+        except (PermissionError, OSError):
+            log_dir = out_dir / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    return log_dir / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
 
 
 def write_index(report_paths: dict[str, Path], out: Path, title: str) -> Path:
@@ -307,23 +399,60 @@ def main() -> None:
     ap.add_argument("--output-dir", help="output dir for cohort mode (default: ./reports)")
     ap.add_argument("--title", default=None, help="report title; defaults to sample name + genome")
 
+    ap.add_argument(
+        "--track-config",
+        help="path to a tracks.json (igv.js track config). When set, the JSON is "
+             "passed straight to create_report --track-config and all default "
+             "tracks / --bam / --vcf / --extra-track are bypassed. Use this for "
+             "ONT methylation viewers — see examples/methylation_ont/.",
+    )
+    ap.add_argument(
+        "--type",
+        dest="report_type",
+        choices=["mutation", "fusion", "junction"],
+        default=None,
+        help="create_report --type. Sets viewer behaviour at each site.",
+    )
+    ap.add_argument(
+        "--info-columns",
+        nargs="*",
+        default=[],
+        help="VCF INFO or BED columns to surface in the variant table. "
+             "For BED sites, 'name' is the most useful.",
+    )
+    ap.add_argument(
+        "--apptainer",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=f"Run create_report from inside {IGVREPORTS_SIF} (dedicated "
+             "igv-reports 1.16.0 SIF, ~83 MB). Skips the NFS conda cold-"
+             "start tax (see rules/apptainer_vs_conda.md). Default: "
+             "auto-detect — on if SLURM_JOB_ID is set (i.e. running under "
+             "SLURM on a compute node, where the cold-start tax bites), "
+             "off otherwise. Override either way with --apptainer / --no-apptainer.",
+    )
+    ap.add_argument(
+        "--log-dir",
+        help="explicit log directory. Default: sibling 'logs/' of the output "
+             "dir (matches results/<run>/{reports,logs}/ lab layout); falls "
+             "back to <out_dir>/logs/ when the sibling is unwritable.",
+    )
+
     args = ap.parse_args()
 
     genome = resolve_genome(args.genome)
     cfg = load_db_config(Path(args.db_config))
     fasta = fasta_for(cfg, genome)
 
-    # Logger placed alongside the output.
+    # Logger placed alongside the output. See derive_log_path docstring.
     if args.samplesheet:
         out_dir = Path(args.output_dir or "reports")
-        out_dir.mkdir(parents=True, exist_ok=True)
-        log_path = out_dir.parent / "logs" / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
     else:
         if not args.output:
             raise SystemExit("ERROR: --output required in single-sample mode")
         out_dir = Path(args.output).parent
-        out_dir.mkdir(parents=True, exist_ok=True)
-        log_path = out_dir.parent / "logs" / f"run_{datetime.now():%Y%m%d_%H%M%S}.log"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log_path = derive_log_path(out_dir, Path(args.log_dir) if args.log_dir else None)
     log = setup_logger(log_path)
 
     log.info(f"=== igv-reports skill, genome={genome} ===")
@@ -331,12 +460,36 @@ def main() -> None:
     log.info(f"fasta:     {fasta}")
     log.info(f"flanking:  {args.flanking} bp (default {DEFAULT_FLANKING})")
 
+    # Resolve --apptainer auto-detect. Tri-state:
+    #   user said --apptainer        -> True
+    #   user said --no-apptainer     -> False
+    #   user said nothing (None)     -> True iff SLURM_JOB_ID is in env
+    # Rationale: on a fresh SLURM compute node, the NFS conda cold-start tax
+    # (~1-2 M page faults, ~2.5 us each) is large; the dedicated SIF skips it.
+    # On the login node, conda is usually warm and the simpler path wins.
+    # See rules/apptainer_vs_conda.md.
+    slurm_job = os.environ.get("SLURM_JOB_ID")
+    if args.apptainer is None:
+        args.apptainer = bool(slurm_job)
+        decision = (
+            f"auto-enabled (SLURM_JOB_ID={slurm_job} detected)"
+            if args.apptainer else
+            "auto-disabled (no SLURM_JOB_ID; conda env path)"
+        )
+        log.info(f"apptainer: {decision}")
+    else:
+        log.info(f"apptainer: {args.apptainer} (explicit)")
+
     default_tracks = resolve_default_tracks(cfg, genome, log)
     log.info(f"default tracks resolved: {len(default_tracks)}")
     for t in default_tracks:
         log.info(f"  - {t}")
 
     extra_tracks = [Path(p) for p in args.extra_track]
+
+    track_config = Path(args.track_config) if args.track_config else None
+    if track_config is not None and not track_config.exists():
+        raise SystemExit(f"ERROR: --track-config file not found: {track_config}")
 
     if args.sites:
         title = args.title or f"{Path(args.sites).stem} ({genome})"
@@ -351,6 +504,10 @@ def main() -> None:
             title=title,
             flanking=args.flanking,
             log=log,
+            track_config=track_config,
+            report_type=args.report_type,
+            info_columns=args.info_columns,
+            use_apptainer=args.apptainer,
         )
     else:
         rows = parse_samplesheet(Path(args.samplesheet))
@@ -371,6 +528,10 @@ def main() -> None:
                 sites=sites, bams=bams, vcf=vcf, extra_tracks=sample_extras,
                 fasta=fasta, default_tracks=default_tracks,
                 output=out_html, title=title, flanking=args.flanking, log=log,
+                track_config=track_config,
+                report_type=args.report_type,
+                info_columns=args.info_columns,
+                use_apptainer=args.apptainer,
             )
             report_paths[sample] = out_html
         idx = write_index(report_paths, out_dir / "index.html", f"igv-reports cohort ({genome})")
