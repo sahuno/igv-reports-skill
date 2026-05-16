@@ -1,26 +1,37 @@
 #!/usr/bin/env bash
-# scenarios.sh — end-to-end regression test for scripts/verify_cohort.py.
+# scenarios.sh — end-to-end integration test for scripts/verify_cohort.py.
 #
 # Builds a 3-sample cohort, snapshots a clean verify pass, then runs four
 # corruption scenarios and asserts each triggers the expected check FAILs.
 # Exit nonzero if any assertion misses.
 #
-# Runtime: ~30 s (one cohort build + four ~1 s reverify cycles).
-# Disk: ~75 MB temp under ./reports/ (auto-cleaned on exit).
+# Runtime: ~6-8 min cold (cohort build dominates); ~30 s when cohort is cached.
+# Disk: ~15 MB under ./reports/ (auto-cleaned on success unless KEEP_REPORTS=1).
 #
-# Requires real BAM paths (hardcoded at the top — lab-internal: COLO829 ONT).
-# Adapt for other clusters by editing BAM_S{1,2,3} and SITES_SRC.
+# BAM source — three different indexed BAMs (any organism, any size). Defaults
+# to the COLO829 ONT release on MSKCC HPC; override per-BAM via env vars:
+#   IGV_REPORTS_TEST_BAM_1, _2, _3
+# Tests SKIP (exit 77) when defaults are unset and no override is provided.
 set -euo pipefail
 
 EX_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(cd "${EX_DIR}/../.." && pwd)"
+SKILL_DIR="$(cd "${EX_DIR}/../../.." && pwd)"
 BUILD="${SKILL_DIR}/scripts/build_igvreports.py"
 VERIFY="${SKILL_DIR}/scripts/verify_cohort.py"
 
-# Lab paths — adjust if running off MSKCC HPC.
-BAM_S1=/data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829bl/sup/PAU59807.d052sup4305mCG_5hmCGvHg38.bam
-BAM_S2=/data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829bl/sup/PAU61427.d052sup4305mCG_5hmCGvHg38.bam
-BAM_S3=/data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829/sup/PAU59949.d052sup4305mCG_5hmCGvHg38.bam
+# BAM sources — env override wins, falls back to MSKCC lab paths.
+BAM_S1="${IGV_REPORTS_TEST_BAM_1:-/data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829bl/sup/PAU59807.d052sup4305mCG_5hmCGvHg38.bam}"
+BAM_S2="${IGV_REPORTS_TEST_BAM_2:-/data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829bl/sup/PAU61427.d052sup4305mCG_5hmCGvHg38.bam}"
+BAM_S3="${IGV_REPORTS_TEST_BAM_3:-/data1/greenbab/projects/GIAB_ont/colo829_2024_03/basecalls/colo829/sup/PAU59949.d052sup4305mCG_5hmCGvHg38.bam}"
+
+for bam in "${BAM_S1}" "${BAM_S2}" "${BAM_S3}"; do
+    if [[ ! -f "${bam}" ]]; then
+        echo "SKIP: integration test needs three indexed BAMs." >&2
+        echo "      Missing: ${bam}" >&2
+        echo "      Override via IGV_REPORTS_TEST_BAM_{1,2,3} env vars." >&2
+        exit 77   # POSIX skipped-test convention
+    fi
+done
 
 SHEET="${EX_DIR}/samplesheet.hg38.tsv"
 SITES="${EX_DIR}/sites.hg38.bed"

@@ -256,7 +256,7 @@ The TSV adds a `sample` column on top of the per-sample verify schema, with
 `"*"` for cohort-global rows. The markdown rollup (`--summary`) groups
 PASS/FAIL counts by check + lists every failure inline.
 
-Worked regression: `examples/cohort_verify_demo/scenarios.sh` builds a
+Worked regression: `tests/integration/cohort_verify/scenarios.sh` builds a
 3-sample cohort and asserts each of four corruption scenarios (missing
 HTML, sample swap, index drift, truncated HTML) triggers the expected
 check FAILs.
@@ -328,7 +328,7 @@ cohort × 50 regions that's ~5 min on top of the structural verify (which
 runs in seconds). Reach for this when sample swap or content regression
 is a real concern; the structural verifier is sufficient for routine builds.
 
-Worked regression: `examples/anchor_verify_demo/scenarios.sh` builds a
+Worked regression: `tests/integration/anchor_verify/scenarios.sh` builds a
 2-sample cohort and asserts each of four content scenarios (tolerance
 violation, min-bound violation, corrupted slice, missing anchor) triggers
 the expected PASS / FAIL / SKIP outcome.
@@ -379,6 +379,28 @@ The `examples/` directory has runnable templates:
 
 These are reference implementations; copy and edit them for new runs
 rather than starting from scratch.
+
+## Tests
+
+Three-layer suite under `tests/`, orchestrated by `tests/run_all.sh`:
+
+| Layer | What it covers | Runtime | Needs |
+|---|---|---|---|
+| **unit** (`tests/unit/`) | parser layer of `verify_report.py` + `verify_anchors.py` — TSV loading, status decision, session-entry locator, balanced-brace JSON extractor, decode round-trip — all with synthetic inputs | ~1 s | pytest |
+| **smoke** (`tests/smoke/`) | `samtools_count` / `samtools_index` / full slice-decode-and-count round-trip against the committed `tests/fixtures/tiny_colo829.hg38.bam` (457 KB, sliced from public ONT COLO829 release) | ~3 s | pytest + samtools (SIF or PATH) |
+| **integration** (`tests/integration/`) | end-to-end: build a 2-/3-sample cohort, structural verify, anchor verify, run 4 corruption scenarios per verifier | ~7 min cold, ~30 s cached | full cohort BAMs (lab default OR `IGV_REPORTS_TEST_BAM_{1,2,3}` env override). SKIPs with exit 77 if neither is available |
+
+```bash
+bash tests/run_all.sh                  # all three layers
+bash tests/run_all.sh --unit-only      # ~1 s — fastest feedback loop
+bash tests/run_all.sh --no-integration # ~12 s — works on any machine
+bash tests/run_all.sh --integration-only
+```
+
+The fixture provenance + regeneration recipe live in
+[tests/fixtures/README.md](tests/fixtures/README.md). Anchor counts the
+smoke layer expects (chr2=5, chr7=9) are the contract — any fixture
+regeneration that changes them must also update the smoke test constants.
 
 ## ONT methylation viewers (specialized path)
 

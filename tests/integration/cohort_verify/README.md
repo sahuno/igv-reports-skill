@@ -23,8 +23,31 @@ it's designed to catch. Self-asserting — exit nonzero on any mismatch.
 ## Run
 
 ```bash
-bash examples/cohort_verify_demo/scenarios.sh
+bash tests/integration/cohort_verify/scenarios.sh
 ```
+
+Or as part of the full test suite:
+
+```bash
+bash tests/run_all.sh                  # all layers
+bash tests/run_all.sh --integration-only
+```
+
+## BAM paths (parameterized)
+
+Defaults to MSKCC HPC paths for the COLO829 ONT BAMs. Override per BAM via
+env vars when running elsewhere:
+
+```bash
+IGV_REPORTS_TEST_BAM_1=/path/to/sample1.bam \
+IGV_REPORTS_TEST_BAM_2=/path/to/sample2.bam \
+IGV_REPORTS_TEST_BAM_3=/path/to/sample3.bam \
+    bash tests/integration/cohort_verify/scenarios.sh
+```
+
+If a default doesn't exist and no env override is set, the script exits
+**77** (POSIX skipped-test convention) and `run_all.sh` reports it as a
+skip, not a failure.
 
 Runtime: ~60-90 s on a warm node (3-sample cohort build at 1-bp point-variant
 sites + 4 reverify cycles). Per-sample HTML ends up ~3-5 MB. Cold-cache
@@ -46,9 +69,11 @@ those paths to point at any three indexed BAMs you have access to — the
 verifier doesn't care which BAMs, only that the three rows in the samplesheet
 declare *different* BAMs (so scenario B's contamination check has signal).
 
-## Why this lives in `examples/`
+## Why this is `integration`, not `smoke` or `unit`
 
-This is a test of the verifier, but it depends on real lab BAMs and on
-`create_report` actually running, so it's not a unit test — it's an
-integration smoke. The skill doesn't yet have a `tests/` dir; when one
-exists, move this here.
+This test depends on real BAMs and on `create_report` actually running, so
+it can't fit in `tests/smoke/` (which uses only the committed COLO829 slice
+fixture and runs in seconds) or `tests/unit/` (parser-only, no I/O).
+
+For the parser-level regression checks that gave rise to this verifier,
+see [tests/unit/test_verify_report.py](../../unit/test_verify_report.py).

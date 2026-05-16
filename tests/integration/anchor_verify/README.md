@@ -27,13 +27,19 @@ mismatch.
 ## Run
 
 ```bash
-bash examples/anchor_verify_demo/scenarios.sh
+bash tests/integration/anchor_verify/scenarios.sh
 ```
 
-Runtime: **~6-8 min on a warm node** (the cohort build dominates — verify
-itself is ~3 s per pass over 2 samples × 2 anchors). Set `REBUILD=1` to force
-rebuild of the HTMLs; otherwise existing HTMLs in `reports/` are reused so
-iteration on the verifier is seconds.
+Or as part of the full test suite:
+
+```bash
+bash tests/run_all.sh                  # all layers
+bash tests/run_all.sh --integration-only
+```
+
+Runtime: **~6-8 min cold** (the cohort build dominates); **~15 s** when the
+cohort is cached. Set `REBUILD=1` to force a rebuild of the HTMLs; otherwise
+existing HTMLs in `reports/` are reused so verifier iteration is seconds.
 
 Disk: ~10 MB temp under `reports/`, auto-cleaned via `trap`.
 
@@ -58,17 +64,29 @@ The four scenarios cover every status the verifier emits:
   re-usable across runs — a region that exists in one cohort's anchors but
   not in another cohort's HTMLs is benign, not a build failure.
 
-## Adapt for other clusters
+## BAM paths (parameterized)
 
-The BAM paths at the top of `scenarios.sh` (`BAM_S1`/`BAM_S2`) are hardcoded
-to COLO829 ONT runs on MSKCC's `/data1/greenbab`. Off-cluster, edit those
-paths to point at any two indexed BAMs you have access to. The verifier
-doesn't care which BAMs, only that they are different so scenarios A-C have
-the contrast they need.
+Defaults to MSKCC HPC paths for the COLO829 ONT BAMs. Override per BAM via
+env vars when running elsewhere:
 
-## Why this lives in `examples/`
+```bash
+IGV_REPORTS_TEST_BAM_1=/path/to/sample1.bam \
+IGV_REPORTS_TEST_BAM_2=/path/to/sample2.bam \
+    bash tests/integration/anchor_verify/scenarios.sh
+```
 
-Same reasoning as the sibling [cohort_verify_demo](../cohort_verify_demo/):
-this is a test of the verifier, but it depends on real lab BAMs and on
-`create_report` actually running, so it's an integration smoke rather than
-a unit test. Move under `tests/` when the skill gets a real test dir.
+The verifier doesn't care which BAMs, only that they're different so
+scenarios A-C have the contrast they need. If a default doesn't exist and
+no env override is set, the script exits **77** (POSIX skipped-test
+convention) and `run_all.sh` reports it as a skip, not a failure.
+
+## Why this is `integration`, not `smoke` or `unit`
+
+This test depends on real BAMs and on `create_report` actually running, so
+it can't fit in `tests/smoke/` (which uses only the committed COLO829 slice
+fixture and runs in seconds) or `tests/unit/` (parser-only, no I/O).
+
+For the parser-level regression checks that gave rise to this verifier,
+see [tests/unit/test_verify_anchors.py](../../unit/test_verify_anchors.py).
+For the samtools/decode round-trip, see
+[tests/smoke/test_slice_count.py](../../smoke/test_slice_count.py).
