@@ -32,6 +32,9 @@ OUTDIR=results/cohort/reports
 python "${BUILD}" \
     --samplesheet "${SAMPLESHEET}" \
     --genome      "${GENOME}" \
-    --output-dir  "${OUTDIR}"
+    --output-dir  "${OUTDIR}" \
+    --fail-on-fail   # auto-invokes verify_cohort.py at the end; exits nonzero if any check FAILs.
+                     # Add --no-verify to skip verification entirely (not recommended for cohort runs).
 
 echo "Cohort index: ${OUTDIR}/index.html"
+echo "Verification: ${OUTDIR}/cohort_verify.tsv + cohort_verify.summary.md"

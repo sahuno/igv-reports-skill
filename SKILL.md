@@ -223,6 +223,44 @@ The check matches on track NAMES (which `--standalone` preserves) — for
 `--track-config` JSON pass meaningful names; positional `--tracks` mode
 uses basenames.
 
+### Cohort-level verification (`verify_cohort.py`)
+
+The per-sample verifier above confirms each HTML is internally consistent
+but cannot tell whether sample-1's HTML accidentally embeds sample-2's BAM
+(e.g., samplesheet typo, copy-paste, tumor/normal slot swap). For cohort
+runs, `scripts/verify_cohort.py` adds five cross-sample checks:
+
+| Check | What it asserts |
+|---|---|
+| `cohort_html_coverage` (global) | Each samplesheet row has exactly one HTML; flags missing + extras |
+| `sample_tracks_match` (per-sample) | Each HTML's session contains every BAM/VCF basename declared in THAT row |
+| `no_cross_sample_contamination` (per-sample) | Each HTML contains no basename that belongs to a DIFFERENT row's track columns (default tracks from `databases_config.yaml` are allow-listed) |
+| `sample_id_embedded` (per-sample) | The `sample` column value appears in the HTML's `<title>` or filename |
+| `index_consistency` (global) | `index.html` links exactly the samplesheet sample set; each target exists and is non-empty |
+
+**Auto-invoked by default** at the end of `build_igvreports.py --samplesheet`
+cohort runs. Disable with `--no-verify`; gate the pipeline with
+`--fail-on-fail`. Standalone invocation:
+
+```bash
+python scripts/verify_cohort.py \
+    --samplesheet samplesheet.tsv \
+    --reports-dir results/<run>/reports/ \
+    --genome hg38 \
+    --out results/<run>/reports/cohort_verify.tsv \
+    --summary results/<run>/reports/cohort_verify.summary.md \
+    --fail-on-fail
+```
+
+The TSV adds a `sample` column on top of the per-sample verify schema, with
+`"*"` for cohort-global rows. The markdown rollup (`--summary`) groups
+PASS/FAIL counts by check + lists every failure inline.
+
+Worked regression: `examples/cohort_verify_demo/scenarios.sh` builds a
+3-sample cohort and asserts each of four corruption scenarios (missing
+HTML, sample swap, index drift, truncated HTML) triggers the expected
+check FAILs.
+
 ## Output and workflow logging
 
 Every run logs to `logs/run_<YYYYMMDD_HHMMSS>.log` next to the reports dir.
@@ -336,6 +374,10 @@ example with real data: `examples/methylation_ont/`.
   the HTML's embedded tableJson + sessionDictionary, confirms region
   count / coordinates / track names match the inputs. Emits a verify.tsv
   and gates on `--fail-on-fail`.
+- `scripts/verify_cohort.py` — cohort-level verifier; layered on top of
+  verify_report's per-sample checks, adds cross-sample contamination
+  scanning + index.html / sample-id consistency. Auto-invoked at the end
+  of `build_igvreports.py --samplesheet`; standalone-runnable too.
 - `scripts/prep_track.sh` — gunzip → sort → bgzip → tabix utility.
 - `igv-screenshots` skill — the **static PNG/PDF/SVG** counterpart based
   on igver. Use it instead of this one when the deliverable is a

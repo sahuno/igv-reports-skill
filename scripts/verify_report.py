@@ -9,6 +9,13 @@ Purpose:
   user's intent: wrong region count, wrong coordinates, missing tracks, or a
   catastrophic empty render.
 
+Dual role:
+  - CLI: `python verify_report.py --html ... --sites ... [--track-config ...]`
+  - Library: importable helpers (parse_table_json, parse_session_dictionary,
+    decode_session_entry, load_sites_bed, expected_track_labels, the
+    `check_*` functions, and the Check dataclass). verify_cohort.py imports
+    these to do per-sample checks + add cross-sample assertions.
+
 Checks emitted (one TSV row per check, ordered):
   1. html_exists           Output file is a regular file.
   2. html_min_size         Output >= --min-size-mb (default 0.5 MB).
@@ -19,10 +26,12 @@ Checks emitted (one TSV row per check, ordered):
   5. region_sessions       sessionDictionary has an entry for each tableJson row.
   6. tracks_present        For --track-config <json>: each track's `name` field
                            appears in the decoded session's tracks[].name list.
-                           For --tracks <path...>: each path's basename appears
-                           in the decoded session's tracks[].name list (igv-reports
-                           auto-names positional tracks by basename).
-                           Skipped if neither flag is given.
+                           For --tracks <path...>: each path's Path.stem appears
+                           in the decoded session's tracks[].name list. igv-
+                           reports strips ONE final suffix when auto-naming
+                           positional tracks (e.g. `x.5mC.bedgraph` -> `x.5mC`,
+                           `gencode.v47.annotation.gff3.gz` -> `gencode.v47.
+                           annotation.gff3`). Skipped if neither flag is given.
                            NOTE: --standalone embeds slices as data: URLs, so
                            original URL paths are absent from the session — we
                            match on track NAMES, which are preserved.
@@ -176,9 +185,12 @@ def expected_track_labels(tracks: list[str] | None, track_config: Path | None) -
     slicing, so URL paths are unrecoverable from the embedded session — we have
     to match on track names instead, which the standalone build preserves.
 
-    - For --track-config <json>: use the `name` field of each entry.
-    - For positional --tracks <path...>: use Path(p).name (igv-reports auto-
-      names positional tracks by their basename).
+    - For --track-config <json>: use the `name` field of each entry verbatim.
+    - For positional --tracks <path...>: use Path(p).stem (igv-reports strips
+      ONE final suffix when auto-naming positional tracks — verified 2026-05-16
+      against create_report 1.16.2: `colo829bl_PAU59807.5mC.bedgraph` ->
+      `colo829bl_PAU59807.5mC`, `gencode.v47.annotation.gff3.gz` ->
+      `gencode.v47.annotation.gff3`, `x.bam` -> `x`).
     Empty list means 'check skipped'.
     """
     out: list[str] = []
@@ -192,7 +204,7 @@ def expected_track_labels(tracks: list[str] | None, track_config: Path | None) -
         return out
     if tracks:
         for t in tracks:
-            out.append(Path(t).name)
+            out.append(Path(t).stem)
     return out
 
 

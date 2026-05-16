@@ -381,6 +381,49 @@ def write_index(report_paths: dict[str, Path], out: Path, title: str) -> Path:
     return out
 
 
+def run_cohort_verify(
+    samplesheet: Path,
+    reports_dir: Path,
+    genome: str,
+    db_config: Path,
+    fail_on_fail: bool,
+    log: logging.Logger,
+) -> None:
+    """Invoke verify_cohort.py at the end of a cohort build. Writes the TSV +
+    summary next to the cohort's index.html. Fails the build if
+    `fail_on_fail` is set and the verifier exits nonzero."""
+    verify_script = Path(__file__).resolve().parent / "verify_cohort.py"
+    if not verify_script.exists():
+        log.warning(f"verify_cohort: script not found at {verify_script} — skipping")
+        return
+    tsv_out = reports_dir / "cohort_verify.tsv"
+    md_out = reports_dir / "cohort_verify.summary.md"
+    cmd = [
+        sys.executable, str(verify_script),
+        "--samplesheet", str(samplesheet),
+        "--reports-dir", str(reports_dir),
+        "--genome", genome,
+        "--db-config", str(db_config),
+        "--out", str(tsv_out),
+        "--summary", str(md_out),
+    ]
+    if fail_on_fail:
+        cmd.append("--fail-on-fail")
+    log.info(f"verify_cohort: running {' '.join(cmd)}")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # Mirror the verifier's stdout/stderr into the run log so audit-trail stays single-source.
+    for line in (proc.stdout or "").splitlines():
+        log.info(f"  verify_cohort > {line}")
+    if proc.stderr:
+        for line in proc.stderr.splitlines():
+            log.warning(f"  verify_cohort (stderr) > {line}")
+    log.info(f"verify_cohort: TSV={tsv_out} summary={md_out} exit={proc.returncode}")
+    if proc.returncode != 0:
+        if fail_on_fail:
+            raise SystemExit(proc.returncode)
+        log.warning(f"verify_cohort: exited {proc.returncode} but --fail-on-fail not set; continuing")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--genome", required=True, help="hg38 | mm10 | mm39 | t2t | GRCh37 (alias-tolerant)")
@@ -436,6 +479,21 @@ def main() -> None:
         help="explicit log directory. Default: sibling 'logs/' of the output "
              "dir (matches results/<run>/{reports,logs}/ lab layout); falls "
              "back to <out_dir>/logs/ when the sibling is unwritable.",
+    )
+    ap.add_argument(
+        "--verify",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run scripts/verify_cohort.py at the end of cohort builds "
+             "(--samplesheet mode). Single-sample (--sites) mode is unaffected "
+             "and emits no cohort verify TSV. Default: on. Use --no-verify to "
+             "skip. The verifier inherits --fail-on-fail.",
+    )
+    ap.add_argument(
+        "--fail-on-fail",
+        action="store_true",
+        help="Propagated to verify_cohort.py: exit nonzero if any verifier "
+             "check is FAIL. Only meaningful with --verify and --samplesheet.",
     )
 
     args = ap.parse_args()
@@ -536,6 +594,18 @@ def main() -> None:
             report_paths[sample] = out_html
         idx = write_index(report_paths, out_dir / "index.html", f"igv-reports cohort ({genome})")
         log.info(f"Wrote cohort index: {idx}")
+
+        if args.verify:
+            run_cohort_verify(
+                samplesheet=Path(args.samplesheet),
+                reports_dir=out_dir,
+                genome=genome,
+                db_config=Path(args.db_config),
+                fail_on_fail=args.fail_on_fail,
+                log=log,
+            )
+        else:
+            log.info("verify_cohort: skipped (--no-verify)")
 
     log.info(f"=== DONE: build_igvreports.py completed successfully ===")
 

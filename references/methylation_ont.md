@@ -221,6 +221,16 @@ the YAML spec consumed by `generate_tracks_json.py`, those names are the
 sample names in the YAML therefore drives the verifier's coverage —
 generic names like "sample1" weaken the check.
 
+**For cohort methylation runs** (multi-patient × per-sample HTMLs +
+`index.html`), the cohort verifier (`scripts/verify_cohort.py`) is the
+more relevant tool: it additionally catches sample-swap bugs (sample-2's
+BAMs accidentally ending up in sample-1's HTML), missing samples, and
+`index.html` drift. The methylation workflow is especially vulnerable to
+sample-swap typos because each patient has multiple ONT runs with similar-
+looking flowcell IDs (e.g., `PAU59807` vs `PAU61427`). Auto-invoked by
+`build_igvreports.py --samplesheet`; see SKILL.md "Cohort-level
+verification" for details.
+
 ## Cross-references
 
 - `rules/igv.md` — bigwig-can't-be-sliced, y-axis-autoscale, UCSC
