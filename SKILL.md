@@ -24,16 +24,38 @@ The skill has three entry points:
 - **prep-track** — utility: convert plain-gzip GFF/GTF/BED.gz into a
   bgzip + tabix-indexed track that igv-reports can load.
 
+## What this skill is (and is not)
+
+This skill is a **driver layer** on top of the upstream `igv-reports`
+Python package by the IGV team
+([github.com/igvteam/igv-reports](https://github.com/igvteam/igv-reports)).
+The naming is unavoidable — both share the `igv-reports` name.
+
+| Component | Source | Role |
+|---|---|---|
+| `create_report` CLI | upstream PyPI package `igv-reports` | does the actual HTML rendering |
+| `scripts/build_igvreports.py` | **this skill** | wraps `create_report` with default-track resolution, cohort/samplesheet mode, SIF auto-detect |
+| `scripts/verify_{report,cohort,anchors}.py` | **this skill** | post-render structural + content audits (not in upstream) |
+| `scripts/prep_track.sh` | **this skill** | bgzip+tabix utility for annotation tracks |
+
+The skill is not on PyPI — it's a directory of scripts. Use it by either
+cloning this repo or copying `scripts/` next to your data.
+
 ## Off-MSKCC quickstart
 
 Defaults assume MSKCC HPC (lab SIF, `databases_config.yaml`, `/data1/greenbab`
 bind). Anywhere else:
 
 ```bash
-# 1. Install create_report on PATH (no SIF, no conda env required).
+# 1. Install the UPSTREAM igv-reports package (provides `create_report`).
 pip install igv-reports
 
-# 2. Bypass the lab databases YAML — pass FASTA + tracks explicitly.
+# 2. Get this skill's wrapper scripts (one of):
+#    - clone:  git clone https://github.com/sahuno/llm_configs.git
+#              cd llm_configs/claude/skills/igv-reports
+#    - or copy scripts/ next to your project
+
+# 3. Run the wrapper, bypassing the lab databases YAML with explicit paths:
 python scripts/build_igvreports.py \
     --genome hg38 \
     --sites sites.hg38.bed \
@@ -44,6 +66,10 @@ python scripts/build_igvreports.py \
     --extra-track /path/to/gencode.v47.annotation.gff3.gz \
     --output report.hg38.html
 ```
+
+If you only need raw `create_report` (no cohort mode, no verifiers, no
+auto-tracks), skip the skill entirely and use upstream directly —
+see [igvteam/igv-reports](https://github.com/igvteam/igv-reports) docs.
 
 Environment overrides (all optional):
 
