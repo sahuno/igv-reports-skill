@@ -263,8 +263,12 @@ def find_create_report() -> str:
         return str(candidate)
     raise SystemExit(
         "ERROR: create_report not on PATH.\n"
-        "  Off-MSKCC install: `pip install igv-reports`\n"
-        "  MSKCC: `source /home/ahunos/miniforge3/etc/profile.d/conda.sh && conda activate snakemake`"
+        "  Recommended (any platform): pip install -U 'igv-reports>=1.16.0'\n"
+        "  MSKCC users:                source /home/ahunos/miniforge3/etc/profile.d/conda.sh \\\n"
+        "                              && conda activate snakemake\n"
+        "  Offline / air-gapped:       point IGV_REPORTS_SIF at an igv-reports SIF\n"
+        "                              and rerun with --apptainer (Galaxy depot:\n"
+        "                              https://depot.galaxyproject.org/singularity/igv-reports:1.16.0--pyh7cba7a3_0)"
     )
 
 

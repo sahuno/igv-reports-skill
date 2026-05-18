@@ -41,7 +41,8 @@ bind). Anywhere else:
 
 ```bash
 # 1. Install the UPSTREAM igv-reports package (provides `create_report`).
-pip install igv-reports
+#    Use -U to pick up the latest fixes; skill requires >=1.16.0.
+pip install -U 'igv-reports>=1.16.0'
 
 # 2. Get this skill's wrapper scripts (one of):
 #    - clone:  git clone https://github.com/sahuno/llm_configs.git

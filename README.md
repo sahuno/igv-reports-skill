@@ -23,8 +23,9 @@ with verified content.
 ## Install
 
 ```bash
-# Upstream engine (provides `create_report` on PATH):
-pip install igv-reports
+# Upstream engine (provides `create_report` on PATH). Use -U to pull the
+# latest release; this driver requires igv-reports >= 1.16.0.
+pip install -U 'igv-reports>=1.16.0'
 
 # This driver (clone for the scripts + tests + SKILL.md):
 git clone https://github.com/sahuno/igv-reports-skill.git
