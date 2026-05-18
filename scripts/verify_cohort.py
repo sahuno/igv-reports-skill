@@ -64,6 +64,7 @@ Skill location:
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -75,9 +76,10 @@ import verify_report as vr
 import build_igvreports as bir
 
 
-DEFAULT_DBCONFIG = Path(
-    "/data1/greenbab/users/ahunos/apps/llm_configs/claude/profiles/databases/databases_config.yaml"
-)
+DEFAULT_DBCONFIG = Path(os.environ.get(
+    "IGV_REPORTS_DB_CONFIG",
+    "/data1/greenbab/users/ahunos/apps/llm_configs/claude/profiles/databases/databases_config.yaml",
+))
 DEFAULT_TRACK_COLUMNS = ["bam_tumor", "bam_normal", "vcf", "extra_tracks"]
 
 

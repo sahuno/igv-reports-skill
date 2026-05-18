@@ -24,6 +24,41 @@ The skill has three entry points:
 - **prep-track** — utility: convert plain-gzip GFF/GTF/BED.gz into a
   bgzip + tabix-indexed track that igv-reports can load.
 
+## Off-MSKCC quickstart
+
+Defaults assume MSKCC HPC (lab SIF, `databases_config.yaml`, `/data1/greenbab`
+bind). Anywhere else:
+
+```bash
+# 1. Install create_report on PATH (no SIF, no conda env required).
+pip install igv-reports
+
+# 2. Bypass the lab databases YAML — pass FASTA + tracks explicitly.
+python scripts/build_igvreports.py \
+    --genome hg38 \
+    --sites sites.hg38.bed \
+    --bam tumor.bam normal.bam \
+    --fasta /path/to/hg38.fa \
+    --no-default-tracks \
+    --extra-track /path/to/your_cpg_islands.bed.gz \
+    --extra-track /path/to/gencode.v47.annotation.gff3.gz \
+    --output report.hg38.html
+```
+
+Environment overrides (all optional):
+
+| Var | Effect |
+|---|---|
+| `IGV_REPORTS_DB_CONFIG` | Path to your own databases YAML (same schema as the lab's) |
+| `IGV_REPORTS_SIF` | Path to your own `igv-reports` apptainer SIF |
+| `SAMTOOLS_SIF_DEFAULT` | Path to your own `samtools` SIF (verifier only) |
+| `IGV_REPORTS_BIND` | Colon-separated bind paths for singularity (default `/data1/greenbab`). Empty string disables binding. |
+
+Driver flags `--fasta` and `--no-default-tracks` let you skip the databases
+YAML entirely without setting any env var. `--no-apptainer` forces the
+PATH `create_report` path even on a SLURM node. The hermetic `tests/unit/`
+suite runs anywhere with `pytest` + Python ≥ 3.10.
+
 ## When to use which entry point
 
 | User request | Entry point |

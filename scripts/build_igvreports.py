@@ -53,14 +53,35 @@ except ImportError:
     print("  source /home/ahunos/miniforge3/etc/profile.d/conda.sh && conda activate snakemake", file=sys.stderr)
     sys.exit(2)
 
-DEFAULT_DBCONFIG = Path(
-    "/data1/greenbab/users/ahunos/apps/llm_configs/claude/profiles/databases/databases_config.yaml"
-)
+DEFAULT_DBCONFIG = Path(os.environ.get(
+    "IGV_REPORTS_DB_CONFIG",
+    "/data1/greenbab/users/ahunos/apps/llm_configs/claude/profiles/databases/databases_config.yaml",
+))
 DEFAULT_FLANKING = 300
 # Dedicated igv-reports 1.16.0 SIF (~83 MB), pulled from Galaxy depot.
 # Cleanest path for HPC: minimal payload vs. the heavier onttools_v3.10.sif
 # which incidentally bundles create_report alongside dorado/samtools/etc.
-IGVREPORTS_SIF = Path("/data1/greenbab/users/ahunos/apps/containers/igv-reports_1.16.0.sif")
+IGVREPORTS_SIF = Path(os.environ.get(
+    "IGV_REPORTS_SIF",
+    "/data1/greenbab/users/ahunos/apps/containers/igv-reports_1.16.0.sif",
+))
+
+
+def apptainer_bind_args() -> list[str]:
+    """Build `--bind <path>` tokens for singularity, skipping paths that don't
+    exist. Source: `$IGV_REPORTS_BIND` (colon-separated) or the MSKCC default
+    `/data1/greenbab`. Returning [] is fine — singularity tolerates no binds.
+
+    Why: hardcoded `--bind /data1/greenbab` fails off-cluster with
+    "no such file or directory". Conditional binding makes the script work
+    anywhere without further patches."""
+    raw = os.environ.get("IGV_REPORTS_BIND")
+    candidates = raw.split(":") if raw is not None else ["/data1/greenbab"]
+    tokens: list[str] = []
+    for p in candidates:
+        if p and Path(p).exists():
+            tokens.extend(["--bind", p])
+    return tokens
 
 GENOME_ALIASES = {
     "hg38": "hg38",
@@ -107,10 +128,20 @@ def resolve_genome(genome: str) -> str:
 
 
 def load_db_config(path: Path) -> dict:
+    """Load the databases YAML. Returns {} (with a warning to stderr) if the
+    file is missing — callers must handle empty cfg gracefully.
+
+    Off-MSKCC users without the YAML can pass --fasta and --no-default-tracks
+    on the driver, OR set $IGV_REPORTS_DB_CONFIG to their own YAML."""
     if not path.exists():
-        raise SystemExit(f"ERROR: databases_config.yaml not found at {path}")
+        sys.stderr.write(
+            f"[build_igvreports] WARNING: db-config not found at {path}\n"
+            "  Set $IGV_REPORTS_DB_CONFIG to point at your YAML, or pass\n"
+            "  --fasta PATH and --no-default-tracks to bypass it entirely.\n"
+        )
+        return {}
     with path.open() as fh:
-        cfg = yaml.safe_load(fh)
+        cfg = yaml.safe_load(fh) or {}
     return cfg
 
 
@@ -121,10 +152,16 @@ def resolve_default_tracks(cfg: dict, genome: str, log: logging.Logger) -> list[
     default? Actually igv-reports renders --tracks in the order passed,
     top-to-bottom. We put annotation tracks LAST so they sit below the
     BAM/VCF data the user is actually inspecting.
+
+    Empty cfg (e.g. off-MSKCC, no databases YAML) → returns [] with a warning.
     """
     g = cfg.get("reference_genomes", {}).get("local", {}).get(genome, {})
     if not g:
-        raise SystemExit(f"ERROR: no entry for genome '{genome}' in databases_config.yaml")
+        log.warning(
+            f"no entry for genome '{genome}' in db-config — skipping default tracks. "
+            "Pass --extra-track or --track-config for annotation tracks."
+        )
+        return []
 
     tracks: list[str] = []
 
@@ -161,7 +198,16 @@ def resolve_default_tracks(cfg: dict, genome: str, log: logging.Logger) -> list[
 
 
 def fasta_for(cfg: dict, genome: str) -> str:
-    fasta = cfg["reference_genomes"]["local"][genome].get("fasta")
+    """Resolve a FASTA path from the db-config. Off-MSKCC users without the
+    YAML can bypass this by passing --fasta PATH on the driver."""
+    try:
+        fasta = cfg["reference_genomes"]["local"][genome].get("fasta")
+    except (KeyError, TypeError):
+        raise SystemExit(
+            f"ERROR: db-config has no '{genome}' entry to resolve FASTA from.\n"
+            "       Pass --fasta PATH explicitly, or set $IGV_REPORTS_DB_CONFIG\n"
+            "       to a YAML that defines reference_genomes.local.<genome>.fasta."
+        )
     if not fasta or not Path(fasta).exists():
         raise SystemExit(f"ERROR: FASTA missing for {genome}: {fasta}")
     if not Path(fasta + ".fai").exists():
@@ -205,6 +251,10 @@ def validate_sites_bed(bed: Path) -> None:
 
 
 def find_create_report() -> str:
+    """Resolve `create_report` on PATH (works for `pip install igv-reports`
+    or any conda env that activated it). On MSKCC the snakemake env at
+    /home/ahunos/miniforge3 is honored when present, but is no longer a
+    portability blocker."""
     cr = shutil.which("create_report")
     if cr:
         return cr
@@ -212,33 +262,38 @@ def find_create_report() -> str:
     if candidate.exists():
         return str(candidate)
     raise SystemExit(
-        "ERROR: create_report not on PATH. Activate snakemake conda env:\n"
-        "  source /home/ahunos/miniforge3/etc/profile.d/conda.sh && conda activate snakemake"
+        "ERROR: create_report not on PATH.\n"
+        "  Off-MSKCC install: `pip install igv-reports`\n"
+        "  MSKCC: `source /home/ahunos/miniforge3/etc/profile.d/conda.sh && conda activate snakemake`"
     )
 
 
 def apptainer_create_report_prefix(sif: Path) -> list[str]:
-    """Return the `singularity exec --cleanenv --bind /data1/greenbab <sif>
+    """Return the `singularity exec --cleanenv [--bind <path> ...] <sif>
     create_report` prefix. Used when --apptainer is passed; avoids the NFS
-    conda cold-start tax (rules/apptainer_vs_conda.md). The SIF is a dedicated
-    igv-reports container (igv-reports_1.16.0.sif, ~83 MB) pulled from the
-    Galaxy depot.
+    conda cold-start tax (rules/apptainer_vs_conda.md). The default SIF is
+    a dedicated igv-reports container (igv-reports_1.16.0.sif, ~83 MB)
+    pulled from the Galaxy depot. Override via $IGV_REPORTS_SIF.
 
     --cleanenv: scrubs host env vars so they don't leak into the SIF.
     Specifically: host SSL_CERT_FILE / SSL_CERT_DIR on RHEL 8 point at paths
     that don't exist inside Galaxy-depot SIFs, and create_report's standalone-
     HTML build path performs an HTTPS GET (for the IGV.js ideogram or similar)
     that aborts with `[SSL: CERTIFICATE_VERIFY_FAILED]`. See
-    rules/apptainer_env_leak.md. The driver wraps the invocation so users
-    don't need to remember the flag."""
+    rules/apptainer_env_leak.md.
+
+    Binds: see `apptainer_bind_args()` — conditional on path existence."""
     if not sif.exists():
         raise SystemExit(
             f"ERROR: apptainer SIF not found: {sif}\n"
-            "       Pull with:\n"
-            "         wget -O /data1/greenbab/users/ahunos/apps/containers/igv-reports_1.16.0.sif \\\n"
-            "           'https://depot.galaxyproject.org/singularity/igv-reports:1.16.0--pyh7e72e81_0'"
+            "       Pull with one of:\n"
+            f"         apptainer pull {sif} \\\n"
+            "           docker://igv-org/igv-reports:1.16.0\n"
+            f"         wget -O {sif} \\\n"
+            "           'https://depot.galaxyproject.org/singularity/igv-reports:1.16.0--pyh7e72e81_0'\n"
+            "       Or set $IGV_REPORTS_SIF to a SIF you already have."
         )
-    return ["singularity", "exec", "--cleanenv", "--bind", "/data1/greenbab", str(sif), "create_report"]
+    return ["singularity", "exec", "--cleanenv", *apptainer_bind_args(), str(sif), "create_report"]
 
 
 def build_one(
@@ -518,7 +573,19 @@ def run_cohort_verify(
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--genome", required=True, help="hg38 | mm10 | mm39 | t2t | GRCh37 (alias-tolerant)")
-    ap.add_argument("--db-config", default=str(DEFAULT_DBCONFIG))
+    ap.add_argument("--db-config", default=str(DEFAULT_DBCONFIG), help=(
+        "YAML resolving genome -> {fasta, CpGIslands, gtf, repMaskerBed} (MSKCC lab default). "
+        "Override via $IGV_REPORTS_DB_CONFIG, or skip entirely with --fasta + --no-default-tracks."
+    ))
+    ap.add_argument("--fasta", help=(
+        "Explicit FASTA path; bypasses --db-config for FASTA lookup. "
+        "Use off-MSKCC where the databases YAML is unavailable. "
+        "Requires a sibling .fai (run `samtools faidx`)."
+    ))
+    ap.add_argument("--no-default-tracks", action="store_true", help=(
+        "Skip the CpG-islands/gencode/RepeatMasker auto-tracks from --db-config. "
+        "Combine with --fasta and --extra-track for full off-MSKCC operation."
+    ))
     ap.add_argument("--flanking", type=int, default=DEFAULT_FLANKING)
     ap.add_argument("--extra-track", action="append", default=[], help="(repeat) extra track path; rendered above default annotations")
 
@@ -608,8 +675,21 @@ def main() -> None:
     args = ap.parse_args()
 
     genome = resolve_genome(args.genome)
-    cfg = load_db_config(Path(args.db_config))
-    fasta = fasta_for(cfg, genome)
+    # Only load db-config when something actually needs it (fasta lookup or
+    # default tracks). Saves the warning noise + lets a fully-explicit
+    # --fasta + --no-default-tracks invocation run with no YAML at all.
+    need_db_config = (not args.fasta) or (not args.no_default_tracks)
+    cfg = load_db_config(Path(args.db_config)) if need_db_config else {}
+    if args.fasta:
+        fasta = args.fasta
+        if not Path(fasta).exists():
+            raise SystemExit(f"ERROR: --fasta path not found: {fasta}")
+        if not Path(fasta + ".fai").exists():
+            raise SystemExit(
+                f"ERROR: FASTA index missing for {fasta} — run `samtools faidx {fasta}`"
+            )
+    else:
+        fasta = fasta_for(cfg, genome)
 
     # Logger placed alongside the output. See derive_log_path docstring.
     if args.samplesheet:
@@ -637,20 +717,32 @@ def main() -> None:
     # See rules/apptainer_vs_conda.md.
     slurm_job = os.environ.get("SLURM_JOB_ID")
     if args.apptainer is None:
-        args.apptainer = bool(slurm_job)
-        decision = (
-            f"auto-enabled (SLURM_JOB_ID={slurm_job} detected)"
-            if args.apptainer else
-            "auto-disabled (no SLURM_JOB_ID; conda env path)"
-        )
+        # Auto-enable SIF mode only when both (a) we're on a SLURM compute
+        # node where the conda cold-start tax bites, AND (b) the SIF actually
+        # exists. The existence check protects off-MSKCC users from a
+        # confusing SIF-not-found error when they didn't ask for apptainer.
+        args.apptainer = bool(slurm_job) and IGVREPORTS_SIF.exists()
+        if args.apptainer:
+            decision = f"auto-enabled (SLURM_JOB_ID={slurm_job}, SIF={IGVREPORTS_SIF})"
+        elif slurm_job:
+            decision = (
+                f"auto-disabled (SLURM_JOB_ID={slurm_job} set, but SIF not found at "
+                f"{IGVREPORTS_SIF}; falling back to PATH create_report)"
+            )
+        else:
+            decision = "auto-disabled (no SLURM_JOB_ID; conda env path)"
         log.info(f"apptainer: {decision}")
     else:
         log.info(f"apptainer: {args.apptainer} (explicit)")
 
-    default_tracks = resolve_default_tracks(cfg, genome, log)
-    log.info(f"default tracks resolved: {len(default_tracks)}")
-    for t in default_tracks:
-        log.info(f"  - {t}")
+    if args.no_default_tracks:
+        default_tracks: list[str] = []
+        log.info("default tracks: skipped (--no-default-tracks)")
+    else:
+        default_tracks = resolve_default_tracks(cfg, genome, log)
+        log.info(f"default tracks resolved: {len(default_tracks)}")
+        for t in default_tracks:
+            log.info(f"  - {t}")
 
     extra_tracks = [Path(p) for p in args.extra_track]
 

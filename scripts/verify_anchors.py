@@ -89,7 +89,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import verify_report as vr
 
 
-DEFAULT_SAMTOOLS_SIF = Path("/data1/greenbab/users/ahunos/apps/containers/samtools_v1.23.1.sif")
+DEFAULT_SAMTOOLS_SIF = Path(os.environ.get(
+    "SAMTOOLS_SIF_DEFAULT",
+    "/data1/greenbab/users/ahunos/apps/containers/samtools_v1.23.1.sif",
+))
+
+
+def _apptainer_bind_args() -> list[str]:
+    """Conditional `--bind <path>` tokens, matching build_igvreports.py.
+
+    Source: $IGV_REPORTS_BIND (colon-separated) or MSKCC default
+    /data1/greenbab. Paths that don't exist are skipped so off-cluster
+    invocations don't fail with `no such file or directory`."""
+    raw = os.environ.get("IGV_REPORTS_BIND")
+    candidates = raw.split(":") if raw is not None else ["/data1/greenbab"]
+    tokens: list[str] = []
+    for p in candidates:
+        if p and Path(p).exists():
+            tokens.extend(["--bind", p])
+    return tokens
 # Match igv-reports BamReader default exclude flag (rules out PCR/optical
 # duplicates and supplementary alignments — see igv_reports/bam.py).
 EXCLUDE_FLAGS = "1536"
@@ -150,7 +168,7 @@ def resolve_samtools(sif: Path | None) -> list[str]:
         if not candidate.exists():
             raise SystemExit(f"ERROR: samtools SIF not found: {candidate}")
         return [
-            "singularity", "exec", "--cleanenv", "--bind", "/data1/greenbab",
+            "singularity", "exec", "--cleanenv", *_apptainer_bind_args(),
             str(candidate), "samtools",
         ]
     path_sam = shutil.which("samtools")
