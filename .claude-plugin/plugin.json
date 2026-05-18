@@ -1,0 +1,30 @@
+{
+  "name": "igv-reports",
+  "version": "0.1.0",
+  "description": "Cohort-aware driver + post-render verifiers on top of the IGV team's igv-reports (create_report). Builds one self-contained HTML per sample with embedded BAM/VCF slices and default annotation tracks (CpG islands, gencode, RepeatMasker); verifies structure, cross-sample contamination, and (opt-in) read-count anchors. Includes ONT 5mC/5hmC methylation viewer presets.",
+  "author": {
+    "name": "Samuel Ahuno",
+    "url": "https://github.com/sahuno"
+  },
+  "homepage": "https://github.com/sahuno/igv-reports-skill",
+  "repository": "https://github.com/sahuno/igv-reports-skill",
+  "license": "MIT",
+  "keywords": [
+    "igv",
+    "igv-reports",
+    "create-report",
+    "genomics",
+    "bioinformatics",
+    "variant-validation",
+    "structural-variants",
+    "viral-integration",
+    "ont",
+    "nanopore",
+    "methylation",
+    "5mc",
+    "5hmc",
+    "html-report",
+    "offline",
+    "cohort"
+  ]
+}

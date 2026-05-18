@@ -99,15 +99,24 @@ CI runs unit + smoke on Python 3.10 / 3.11 / 3.12 on every push to `main`.
 
 ## Use as a Claude Code skill
 
-This repo includes a [`SKILL.md`](SKILL.md) for Claude Code users:
+This repo is also a Claude Code plugin marketplace. Two install paths:
 
-```bash
-# Symlink the repo root into Claude Code's skills dir:
-ln -s ~/code/igv-reports-skill ~/.claude/skills/igv-reports
+**A. Marketplace install (recommended — no clone needed):**
+
+```text
+/plugin marketplace add sahuno/igv-reports-skill
+/plugin install igv-reports@igv-reports-skill
 ```
 
-After symlinking, Claude Code discovers `igv-reports` as a callable skill
-and reads `SKILL.md` for invocation guidance.
+**B. Local symlink (clone + link):**
+
+```bash
+git clone https://github.com/sahuno/igv-reports-skill.git ~/code/igv-reports-skill
+ln -s ~/code/igv-reports-skill/skills/igv-reports ~/.claude/skills/igv-reports
+```
+
+Either way, Claude Code discovers `igv-reports` as a callable skill and reads
+[`SKILL.md`](SKILL.md) for invocation guidance.
 
 ## Repo layout
 

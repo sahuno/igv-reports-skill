@@ -1,0 +1,17 @@
+{
+  "name": "igv-reports-skill",
+  "owner": {
+    "name": "Samuel Ahuno",
+    "url": "https://github.com/sahuno"
+  },
+  "description": "Self-contained offline HTML genomic-region reports (igv-reports / create_report) with cohort-aware driver, per-sample and cross-sample verifiers, and ONT 5mC/5hmC presets.",
+  "plugins": [
+    {
+      "name": "igv-reports",
+      "source": "./",
+      "description": "Cohort-aware driver + post-render verifiers on top of the IGV team's igv-reports (create_report). Builds one self-contained HTML per sample with embedded BAM/VCF slices and default annotation tracks; verifies structure, cross-sample contamination, and (opt-in) read-count anchors. Includes ONT methylation viewer presets.",
+      "version": "0.1.0",
+      "license": "MIT"
+    }
+  ]
+}

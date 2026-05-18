@@ -1,13 +1,6 @@
 ---
 name: igv-reports
-description: |
-  Build self-contained, offline HTML genomic-region reports with igv-reports (create_report). Each HTML bundles igv.js viewers per region with embedded BAM/VCF data slices and default tracks (CpG islands, gencode, RepeatMasker); a reviewer clicks the variant table to inspect read-level evidence with no internet, no server, no IGV install.
-
-  USE this skill whenever the user wants an HTML, clickable, or browseable viewer of genomic data — phrases like "HTML IGV report", "offline IGV", "self-contained HTML", "clickable viewer", "create_report", "igv-reports", "email this viewer", or any browseable HTML of reads at variants, fusion breakpoints, SV junctions, viral integrations, ChIP peaks, ROIs, or ONT 5mC/5hmC methylation views at promoters/gene bodies/DMRs. Trigger even when the user doesn't say "igv-reports" — giveaway is HTML/clickable/offline plus genomic regions. Also fire on /igv-reports.
-
-  DO NOT use for static PNG/PDF/SVG IGV screenshots — use the igv-screenshots skill.
-
-  Supports hg38, mm10, mm39, T2T. Defaults: --flanking 300, --standalone, genome-tagged output.
+description: Use when the user wants an HTML, clickable, browseable, offline, or emailable viewer of genomic data — phrases like "HTML IGV report", "offline IGV", "self-contained HTML", "clickable viewer", "create_report", "igv-reports", "email this viewer", or any browseable HTML of reads at variants, fusion breakpoints, SV junctions, viral integrations, ChIP peaks, ROIs, or ONT 5mC/5hmC methylation views at promoters/gene bodies/DMRs. Trigger even when the user doesn't say "igv-reports" — giveaway is HTML/clickable/offline plus genomic regions. Also fire on /igv-reports. DO NOT use for static PNG/PDF/SVG IGV screenshots — use the igv-screenshots skill instead.
 ---
 
 # igv-reports
