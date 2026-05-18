@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "igv-reports-skill"
+version = "0.1.0"
+description = "Cohort-aware driver + post-render verifiers on top of igv-reports (create_report)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Samuel Ahuno"}]
+keywords = ["igv", "igv-reports", "genomics", "bioinformatics", "ont", "methylation", "variant-validation"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "igv-reports>=1.16.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0"]
+
+[project.urls]
+Homepage = "https://github.com/sahuno/igv-reports-skill"
+Issues = "https://github.com/sahuno/igv-reports-skill/issues"
+Upstream = "https://github.com/igvteam/igv-reports"
+
+[tool.setuptools]
+packages = []
+script-files = [
+    "scripts/build_igvreports.py",
+    "scripts/verify_report.py",
+    "scripts/verify_cohort.py",
+    "scripts/verify_anchors.py",
+    "scripts/generate_tracks_json.py",
+    "scripts/prep_track.sh",
+]
