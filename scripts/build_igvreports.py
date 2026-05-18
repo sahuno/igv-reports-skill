@@ -38,6 +38,7 @@ Skill location:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import shutil
@@ -321,6 +322,181 @@ def apptainer_create_report_prefix(sif: Path) -> list[str]:
     return ["singularity", "exec", "--cleanenv", *apptainer_bind_args(), str(sif), "create_report"]
 
 
+def _read_sites_bed_rows(sites: Path) -> list[dict]:
+    """Read a sites BED into a list of dicts, one per data row. Lines
+    starting with `#` / `track ` / `browser ` are skipped (same rule
+    `validate_sites_bed` uses). The 4th column (`name`) becomes the UID
+    when present; otherwise an auto-generated `region_<idx>` is used."""
+    rows: list[dict] = []
+    with sites.open() as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#") or line.startswith("track ") or line.startswith("browser "):
+                continue
+            cols = line.split("\t")
+            if len(cols) < 3:
+                continue
+            chrom, start_s, end_s = cols[0], cols[1], cols[2]
+            name = cols[3].strip() if len(cols) >= 4 and cols[3].strip() else ""
+            rows.append({
+                "chrom": chrom,
+                "start": int(start_s),
+                "end": int(end_s),
+                "name": name,
+            })
+    # Auto-assign UIDs where missing — keep them stable for cross-artifact
+    # matching by indexing in file order.
+    for idx, r in enumerate(rows, start=1):
+        if not r["name"]:
+            r["name"] = f"region_{idx:03d}"
+        r["bed_row_idx"] = idx
+    return rows
+
+
+def _write_igver_regions_bed(rows: list[dict], flanking: int, out: Path) -> None:
+    """Emit a BED with `--flanking` baked into start/end and UID in col 4.
+    Filename collisions in igver's `chr-start-end.<uid>.png` are avoided by
+    the auto-assigned UIDs in `_read_sites_bed_rows`."""
+    with out.open("w") as fh:
+        for r in rows:
+            start = max(0, r["start"] - flanking)
+            end = r["end"] + flanking
+            # igver _parse_bed_file reads cols 0-3 positionally; no header.
+            fh.write(f"{r['chrom']}\t{start}\t{end}\t{r['name']}\n")
+
+
+def _write_igver_input_list(tracks: list[str], out: Path) -> None:
+    """One path per line — igver's `-i FOO.txt` consumes this verbatim."""
+    with out.open("w") as fh:
+        for t in tracks:
+            fh.write(f"{t}\n")
+
+
+def _resolve_igver_cmd(override: str | None) -> list[str]:
+    """Return the argv prefix used to invoke igver. Resolution order:
+    1. Explicit override (split on whitespace — supports `apptainer exec ... igver`).
+    2. $IGVER_CMD env var (same shape as the override).
+    3. `igver` on PATH.
+    4. Apptainer SIF at `/data1/greenbab/software/images/igver_latest.sif`
+       (lab default; only used if reachable from the current host)."""
+    if override:
+        return override.split()
+    env_cmd = os.environ.get("IGVER_CMD")
+    if env_cmd:
+        return env_cmd.split()
+    on_path = shutil.which("igver")
+    if on_path:
+        return [on_path]
+    lab_sif = Path("/data1/greenbab/software/images/igver_latest.sif")
+    if lab_sif.exists():
+        return [
+            "singularity", "exec", "--cleanenv", *apptainer_bind_args(),
+            str(lab_sif), "igver",
+        ]
+    raise SystemExit(
+        "ERROR: igver not found.\n"
+        "  Install: pip install igver  (or use the lab SIF)\n"
+        "  Override: --igver-cmd 'apptainer exec /path/to/igver.sif igver'\n"
+        "  Or set $IGVER_CMD"
+    )
+
+
+def build_pngs_with_igver(
+    sites: Path,
+    tracks: list[str],
+    genome: str,
+    flanking: int,
+    out_dir: Path,
+    log: logging.Logger,
+    html_path: Path,
+    igver_cmd: str | None = None,
+    dpi: int = 300,
+    display_mode: str = "collapse",
+    panel_height: int | None = None,
+    fmt: str = "png",
+) -> Path:
+    """Invoke igver against the same sites + track list that drove
+    create_report, write a manifest mapping each BED row to its PNG path
+    and HTML row, return the manifest path.
+
+    Consistency contract (the five levers from the design):
+      1. Same sites BED + same `flanking` baked into the BED rows we pass.
+      2. Same resolved track list.
+      3. `display_mode` chosen to match HTML defaults (collapse).
+      4. UID-based filenames let a user pair PNG ↔ HTML by string match.
+      5. The manifest TSV is the audit trail; verify_cohort.py reads it.
+
+    Output layout (caller controls `out_dir`):
+      out_dir/
+        igver_regions.bed     - flanked BED with UIDs in col 4 (igver -r)
+        igver_input.txt       - track paths, one per line (igver -i)
+        png/                  - actual PNGs (igver -o); filenames are
+                                chr-start-end.<uid>.<png|svg|pdf>
+        manifest.tsv          - cross-artifact bridge to the HTML
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    png_dir = out_dir / "png"
+    png_dir.mkdir(parents=True, exist_ok=True)
+
+    rows = _read_sites_bed_rows(sites)
+    if not rows:
+        raise SystemExit(f"ERROR: no data rows found in sites BED: {sites}")
+
+    regions_bed = out_dir / "igver_regions.bed"
+    _write_igver_regions_bed(rows, flanking, regions_bed)
+    input_txt = out_dir / "igver_input.txt"
+    _write_igver_input_list(tracks, input_txt)
+
+    cmd = list(_resolve_igver_cmd(igver_cmd)) + [
+        "-i", str(input_txt),
+        "-r", str(regions_bed),
+        "-o", str(png_dir),
+        "-g", genome,
+        "-d", display_mode,
+        "--dpi", str(dpi),
+        "-f", fmt,
+        "--no-singularity",  # igver itself shouldn't nest containers
+    ]
+    if panel_height is not None:
+        cmd.extend(["-p", str(panel_height)])
+
+    log.info(f"  igver: dpi={dpi} display={display_mode} fmt={fmt} regions={len(rows)}")
+    log.info(f"  igver cmd: {' '.join(cmd)}")
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        log.error(f"igver FAILED for {sites}")
+        log.error(f"stdout: {proc.stdout}")
+        log.error(f"stderr: {proc.stderr}")
+        raise SystemExit(proc.returncode)
+
+    # Write the manifest. PNG filename convention is set by igver's
+    # _parse_bed_file: `<chrom>-<start>-<end>.<uid>.<ext>`. We reconstruct
+    # the path here so the manifest is authoritative even if a file is
+    # missing — `verify_cohort.py` checks presence + non-empty separately.
+    ext = "svg" if fmt in ("svg", "pdf") else fmt
+    manifest = out_dir / "manifest.tsv"
+    with manifest.open("w") as fh:
+        fh.write(
+            "#bed_row_idx\tuid\tchrom\tstart_orig\tend_orig\t"
+            "start_flanked\tend_flanked\tregion\tpng_path\thtml_path\thtml_table_row\n"
+        )
+        for r in rows:
+            start_f = max(0, r["start"] - flanking)
+            end_f = r["end"] + flanking
+            fname = f"{r['chrom']}-{start_f}-{end_f}.{r['name']}.{ext}"
+            png_rel = (png_dir / fname).resolve()
+            html_rel = html_path.resolve()
+            fh.write(
+                f"{r['bed_row_idx']}\t{r['name']}\t{r['chrom']}\t"
+                f"{r['start']}\t{r['end']}\t{start_f}\t{end_f}\t"
+                f"{r['chrom']}:{start_f}-{end_f}\t{png_rel}\t{html_rel}\t"
+                f"{r['bed_row_idx']}\n"
+            )
+
+    log.info(f"  png manifest: {manifest} ({len(rows)} rows)")
+    return manifest
+
+
 def build_one(
     sites: Path,
     bams: list[Path],
@@ -336,6 +512,11 @@ def build_one(
     report_type: str | None = None,
     info_columns: list[str] | None = None,
     use_apptainer: bool = False,
+    also_png: bool = False,
+    igver_cmd: str | None = None,
+    png_dpi: int = 300,
+    png_display_mode: str = "collapse",
+    png_out_dir: Path | None = None,
 ) -> Path:
     """Run create_report for one site set and return the HTML path.
 
@@ -411,6 +592,59 @@ def build_one(
 
     if output.exists():
         log.info(f"  HTML: {output} ({output.stat().st_size / 1024 / 1024:.2f} MB)")
+
+    # PNG sidecar — same regions, same tracks, written next to the HTML.
+    # On the --track-config path we extract every `url` from the JSON
+    # (file resources only — http(s) URLs are skipped since igver can't
+    # consume them); on the positional path we reuse the same ordered
+    # list we just passed to create_report.
+    if also_png:
+        if track_config is not None:
+            try:
+                with track_config.open() as fh:
+                    cfg_tracks = json.load(fh)
+            except Exception as e:
+                log.warning(f"--also-png: unable to parse --track-config JSON: {e} — skipping PNG step")
+                return output
+            png_tracks: list[str] = []
+            for t in cfg_tracks if isinstance(cfg_tracks, list) else []:
+                url = t.get("url") if isinstance(t, dict) else None
+                if url and not str(url).startswith(("http://", "https://")):
+                    png_tracks.append(str(url))
+            if not png_tracks:
+                log.warning("--also-png: track-config has no local-path tracks — skipping PNG step")
+                return output
+        else:
+            png_tracks = [str(b) for b in bams]
+            if vcf:
+                png_tracks.append(str(vcf))
+            png_tracks.extend(str(t) for t in extra_tracks)
+            png_tracks.extend(default_tracks)
+
+        # PNG sibling dir is `<html_parent>/png_<html_stem>/` unless overridden.
+        # Keeps each sample's PNG batch isolated in cohort mode where multiple
+        # build_one() calls share an output dir.
+        out_dir = png_out_dir if png_out_dir is not None else (
+            output.parent / f"png_{output.stem}"
+        )
+        # Pull genome out of the HTML filename (`<sample>.<genome>.html`).
+        # Falls back to "hg38" only if the convention is broken; the
+        # genome-tag hook in CLAUDE.md ensures this string is real.
+        parts = output.stem.split(".")
+        genome_tag = parts[-1] if len(parts) >= 2 else "hg38"
+        build_pngs_with_igver(
+            sites=sites,
+            tracks=png_tracks,
+            genome=genome_tag,
+            flanking=flanking,
+            out_dir=out_dir,
+            log=log,
+            html_path=output,
+            igver_cmd=igver_cmd,
+            dpi=png_dpi,
+            display_mode=png_display_mode,
+        )
+
     return output
 
 
@@ -652,6 +886,39 @@ def main() -> None:
              "For BED sites, 'name' is the most useful.",
     )
     ap.add_argument(
+        "--also-png",
+        action="store_true",
+        help="After create_report finishes, invoke igver against the same "
+             "sites BED + track list to produce per-region PNGs alongside "
+             "the HTML. PNGs land in <html_parent>/png_<sample>/png/ with "
+             "filename `<chr-start-end>.<uid>.png` (uid = BED `name` col, "
+             "auto-assigned `region_<idx>` when missing). A manifest TSV "
+             "bridges PNG ↔ HTML rows. Requires `igver` on PATH or "
+             "$IGVER_CMD / --igver-cmd override. See SKILL.md 'Exporting "
+             "HTML and PNG side-by-side' for the consistency contract.",
+    )
+    ap.add_argument(
+        "--igver-cmd",
+        default=None,
+        help="Override the igver invocation. Resolution order: this flag, "
+             "$IGVER_CMD, `igver` on PATH, the lab apptainer SIF. Pass the "
+             "full command including any apptainer wrapper, e.g. "
+             "'apptainer exec /path/to/igver.sif igver'.",
+    )
+    ap.add_argument(
+        "--png-dpi",
+        type=int,
+        default=300,
+        help="DPI for igver PNG output (default 300; bump to 600 for slide-quality).",
+    )
+    ap.add_argument(
+        "--png-display-mode",
+        choices=["expand", "collapse", "squish"],
+        default="collapse",
+        help="igver `-d` flag. Default 'collapse' to match the HTML's BAM "
+             "BAM_DEFAULTS displayMode. Use 'expand' for per-read SV inspection.",
+    )
+    ap.add_argument(
         "--apptainer",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -809,6 +1076,10 @@ def main() -> None:
             report_type=args.report_type,
             info_columns=args.info_columns,
             use_apptainer=args.apptainer,
+            also_png=args.also_png,
+            igver_cmd=args.igver_cmd,
+            png_dpi=args.png_dpi,
+            png_display_mode=args.png_display_mode,
         )
     else:
         rows = parse_samplesheet(Path(args.samplesheet))
@@ -842,6 +1113,10 @@ def main() -> None:
                 report_type=args.report_type,
                 info_columns=args.info_columns,
                 use_apptainer=args.apptainer,
+                also_png=args.also_png,
+                igver_cmd=args.igver_cmd,
+                png_dpi=args.png_dpi,
+                png_display_mode=args.png_display_mode,
             )
             return sample, out_html
 
