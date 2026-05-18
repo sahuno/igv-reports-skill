@@ -11,6 +11,27 @@
 genome: hg38
 
 # Annotation tracks rendered top of viewer.
+#
+# Two forms are supported per entry:
+#
+#   1. SHORTCUT — resolves the path from databases_config.yaml for the
+#      genome above. Skips the path lookup; gets a canned Okabe-Ito color
+#      and displayMode that you can still override per entry.
+#      Valid `default:` keys: cgi, gencode, repmasker, epdnew_coding,
+#      epdnew_noncoding (the last two are hg38-only).
+#
+#        - default: gencode
+#        - default: cgi
+#        - default: repmasker
+#        - default: gencode
+#          name: "Gencode v47 (promoter slice only)"   # OPTIONAL override
+#          displayMode: COLLAPSED                       # OPTIONAL override
+#
+#   2. EXPLICIT — hand-pasted url (and optional indexURL), used when the
+#      track is a pre-sliced custom file or a non-default annotation.
+#      This form does NOT need the top-level `genome:`.
+#
+# The two forms can be mixed in any order in the list below.
 annotation:
   - name: Gencode v47 (promoter slice)
     url: gencode.v47.promoter_regions.gtf.gz
