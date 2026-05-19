@@ -99,6 +99,9 @@ fi
 # Each scenarios.sh exits 77 if its required BAMs aren't available; we treat
 # that as a skip rather than a failure so the suite is portable.
 if [[ $RUN_INTEGRATION -eq 1 ]]; then
+    # end_to_end: uses the committed tiny_colo829 fixture (~30 s, runs in CI).
+    run_layer "integration / end_to_end" "full pipeline against committed fixture" \
+        bash "${TESTS_DIR}/integration/end_to_end/scenarios.sh"
     run_layer "integration / cohort_verify" "cohort structural verifier scenarios" \
         bash "${TESTS_DIR}/integration/cohort_verify/scenarios.sh"
     run_layer "integration / anchor_verify" "anchor content verifier scenarios" \

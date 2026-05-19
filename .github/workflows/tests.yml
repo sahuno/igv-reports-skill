@@ -34,3 +34,15 @@ jobs:
         env:
           IGV_REPORTS_BIND: ""
         run: bash tests/run_all.sh --no-integration
+
+      - name: Run end-to-end integration (uses committed fixture)
+        env:
+          IGV_REPORTS_BIND: ""
+        run: |
+          # end_to_end/scenarios.sh runs the full pipeline (create_report,
+          # verify_report, verify_anchors generate + verify, optional
+          # --also-png) against tests/fixtures/tiny_colo829.hg38.bam. Takes
+          # ~30 s. The --also-png step SKIPs in CI because igver isn't
+          # installed (intentional — that path is exercised on hosts that
+          # ship the IGVer SIF).
+          bash tests/integration/end_to_end/scenarios.sh
