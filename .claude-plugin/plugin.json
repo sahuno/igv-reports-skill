@@ -26,5 +26,12 @@
     "html-report",
     "offline",
     "cohort"
-  ]
+  ],
+  "upstream": {
+    "name": "igv-reports",
+    "url": "https://github.com/igvteam/igv-reports",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2018-2019 The Broad Institute and The Regents of the University of California",
+    "credits": "CREDITS.md"
+  }
 }

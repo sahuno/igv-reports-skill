@@ -138,12 +138,36 @@ igv-reports-skill/
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). This repository is © Samuel Ahuno; it builds
+on the upstream `igv-reports` package (MIT, © 2018-2019 The Broad
+Institute and The Regents of the University of California). The upstream
+license, the reuse/add breakdown, and full attribution live in
+[CREDITS.md](CREDITS.md).
+
+## Acknowledgments
+
+The HTML rendering engine (`create_report`) and the embedded viewer
+(`igv.js`) are written and maintained by the IGV team at the Broad
+Institute — Jim Robinson, Helga Thorvaldsdóttir, Douglass Turner, Jill
+Mesirov, and contributors at <https://github.com/igvteam>. This driver
+would not exist without their work. See [CREDITS.md](CREDITS.md) for
+the full attribution and the upstream license verbatim.
 
 ## Citation
 
-If you use this for a publication, please cite both the upstream
-`igv-reports` package and this driver:
+If you use the rendered HTML reports in a publication, please cite the
+**igv.js** paper:
 
-- Upstream: [igvteam/igv-reports](https://github.com/igvteam/igv-reports)
-- This driver: `github.com/sahuno/igv-reports-skill`
+> Robinson, J. T., Thorvaldsdóttir, H., Turner, D., & Mesirov, J. P.
+> (2023). igv.js: an embeddable JavaScript implementation of the
+> Integrative Genomics Viewer (IGV). *Bioinformatics*, 39(1), btac830.
+> [doi:10.1093/bioinformatics/btac830](https://doi.org/10.1093/bioinformatics/btac830)
+
+If you used this repo's cohort driver, verifiers, or ONT methylation
+presets, please also cite the repository:
+
+> Ahuno, S. (2026). *igv-reports-skill: cohort-aware driver and
+> verifiers for igv-reports.* <https://github.com/sahuno/igv-reports-skill>
+
+BibTeX entries and the full attribution narrative are in
+[CREDITS.md](CREDITS.md).

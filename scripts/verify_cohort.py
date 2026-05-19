@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """verify_cohort.py — cohort-level structural verifier for create_report runs.
 
+Verifies output of `igv-reports` (`create_report`) maintained by the IGV
+team at the Broad Institute (MIT, © 2018-2019 The Broad Institute and The
+Regents of the University of California;
+<https://github.com/igvteam/igv-reports>). The cross-sample contamination
+scan in this file is added by this repo, not by upstream. See CREDITS.md.
+
 Author: Samuel Ahuno
 Purpose:
   Catches sample-to-HTML mismatches in cohort mode. Per-sample verification

@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """generate_tracks_json.py — build an igv-reports tracks.json from a YAML spec.
 
+Produces a tracks.json consumed by `igv-reports` (`create_report`) via its
+`--track-config` flag. `igv-reports` is maintained by the IGV team at the
+Broad Institute (MIT, © 2018-2019 The Broad Institute and The Regents of
+the University of California; <https://github.com/igvteam/igv-reports>).
+See CREDITS.md for full attribution.
+
 Author: Samuel Ahuno
 Purpose:
   ONT methylation viewers need named, colored, y-axis-locked tracks that

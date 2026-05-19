@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """build_igvreports.py — generic driver for the igv-reports skill.
 
+Builds on `igv-reports` (`create_report`) maintained by the IGV team at the
+Broad Institute (MIT, © 2018-2019 The Broad Institute and The Regents of
+the University of California; <https://github.com/igvteam/igv-reports>).
+This script wraps `create_report`; it does not replace it. See CREDITS.md
+for full attribution and citation.
+
 Author: Samuel Ahuno
 Purpose:
   Build self-contained HTML genomic-region reports with create_report

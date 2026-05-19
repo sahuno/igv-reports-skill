@@ -11,7 +11,14 @@
       "source": "./",
       "description": "Cohort-aware driver + post-render verifiers on top of the IGV team's igv-reports (create_report). Builds one self-contained HTML per sample with embedded BAM/VCF slices and default annotation tracks; verifies structure, cross-sample contamination, and (opt-in) read-count anchors. Includes ONT methylation viewer presets.",
       "version": "0.1.0",
-      "license": "MIT"
+      "license": "MIT",
+      "upstream": {
+        "name": "igv-reports",
+        "url": "https://github.com/igvteam/igv-reports",
+        "license": "MIT",
+        "copyright": "Copyright (c) 2018-2019 The Broad Institute and The Regents of the University of California",
+        "credits": "CREDITS.md"
+      }
     }
   ]
 }

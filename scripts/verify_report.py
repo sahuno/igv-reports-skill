@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """verify_report.py — post-render structural verifier for create_report HTMLs.
 
+Verifies output of `igv-reports` (`create_report`) maintained by the IGV
+team at the Broad Institute (MIT, © 2018-2019 The Broad Institute and The
+Regents of the University of California;
+<https://github.com/igvteam/igv-reports>). The verification logic in this
+file is added by this repo, not by upstream. See CREDITS.md.
+
 Author: Samuel Ahuno
 Purpose:
   Validates that a self-contained create_report HTML actually contains what

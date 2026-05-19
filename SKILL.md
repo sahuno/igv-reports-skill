@@ -716,6 +716,24 @@ In addition, `verify_cohort.py` then runs three checks per sample:
 `--png-min-size-kb 5.0` lowers the threshold if you have legitimate
 no-data regions where igver produces a near-empty PNG.
 
+## Credits
+
+The HTML rendering engine here is **not** this skill — it is the upstream
+[`igv-reports`](https://github.com/igvteam/igv-reports) package
+(`create_report`) maintained by the IGV team at the Broad Institute (MIT,
+© 2018-2019 The Broad Institute and The Regents of the University of
+California). The rendered HTML embeds `igv.js` from the same team. This
+skill is a driver + verifier layer on top.
+
+When producing outputs that will end up in a publication, cite the igv.js
+paper: Robinson, J. T., Thorvaldsdóttir, H., Turner, D., & Mesirov, J. P.
+(2023). *igv.js: an embeddable JavaScript implementation of the
+Integrative Genomics Viewer (IGV).* Bioinformatics, 39(1), btac830.
+[doi:10.1093/bioinformatics/btac830](https://doi.org/10.1093/bioinformatics/btac830).
+
+Full attribution, the upstream MIT license verbatim, the reuse-vs-add
+table, and BibTeX entries live in [`CREDITS.md`](CREDITS.md).
+
 ## See also
 
 - `references/best_practices.md` — full create_report flag reference,
