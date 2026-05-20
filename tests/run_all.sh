@@ -106,6 +106,8 @@ if [[ $RUN_INTEGRATION -eq 1 ]]; then
         bash "${TESTS_DIR}/integration/cohort_verify/scenarios.sh"
     run_layer "integration / anchor_verify" "anchor content verifier scenarios" \
         bash "${TESTS_DIR}/integration/anchor_verify/scenarios.sh"
+    run_layer "integration / interpret" "interpretation.md triage rendering" \
+        bash "${TESTS_DIR}/integration/interpret/scenarios.sh"
 fi
 
 echo "=== summary ==="
