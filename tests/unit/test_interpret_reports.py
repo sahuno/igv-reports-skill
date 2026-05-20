@@ -97,3 +97,26 @@ def test_region_verdict_skip_ignored_when_others_present():
     assert ir.region_verdict([_res("PASS"), _res("SKIP")]) == "PASS"
     # FAIL + SKIP -> FAIL
     assert ir.region_verdict([_res("FAIL"), _res("SKIP")]) == "FAIL"
+
+
+def test_parse_region_normal():
+    assert ir.parse_region("chr7:148884000-148884001") == ("chr7", 148884000)
+
+
+def test_parse_region_unparseable_falls_back():
+    assert ir.parse_region("weird") == ("weird", 0)
+
+
+def test_sort_key_orders_fail_first_then_genomic():
+    entries = [
+        ("chr1:500-600", "PASS"),
+        ("chr1:100-200", "FAIL"),
+        ("chr1:300-400", "FAIL"),
+        ("chr1:700-800", "UNVERIFIED"),
+        ("chr1:900-999", "REVIEW"),
+    ]
+    ordered = sorted(entries, key=lambda e: ir.sort_key(e[1], e[0]))
+    assert [v for _, v in ordered] == ["FAIL", "FAIL", "REVIEW", "UNVERIFIED", "PASS"]
+    # the two FAILs keep genomic order (100 before 300)
+    assert ordered[0][0] == "chr1:100-200"
+    assert ordered[1][0] == "chr1:300-400"

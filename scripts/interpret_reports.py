@@ -122,3 +122,20 @@ def region_verdict(results: list[AnchorResult]) -> str:
     if statuses == {"FAIL"}:
         return "FAIL"
     return "REVIEW"
+
+
+def parse_region(region: str) -> tuple[str, int]:
+    """Split 'chrom:start-end' into (chrom, start) for genomic ordering.
+    Falls back to (region, 0) when the string isn't in that shape."""
+    try:
+        chrom, span = region.rsplit(":", 1)
+        start = int(span.split("-", 1)[0])
+        return chrom, start
+    except (ValueError, IndexError):
+        return region, 0
+
+
+def sort_key(verdict: str, region: str) -> tuple[int, str, int]:
+    """FAIL-first severity, then genomic (chrom string, start int)."""
+    chrom, start = parse_region(region)
+    return (VERDICT_ORDER[verdict], chrom, start)
