@@ -150,3 +150,47 @@ def test_aggregate_groups_counts_and_sorts():
     s2 = sections[1]
     assert s2.counts == {"FAIL": 0, "REVIEW": 0, "UNVERIFIED": 1, "PASS": 0}
     assert s2.entries[0].verdict == "UNVERIFIED"
+
+
+def test_render_markdown_layout():
+    rows = [
+        ir.AnchorResult("s1", "tumor", "chr1:100-200", "FAIL", "0", "41", "diff_ratio=0.927 (tol=0.050)"),
+        ir.AnchorResult("s1", "tumor", "chr1:300-400", "PASS", "88", "90", "diff_ratio=0.022 (tol=0.050)"),
+        ir.AnchorResult("s1", "meth", "chr1:300-400", "FAIL", "0", "14", "diff_ratio=1.000 (tol=0.050)"),
+        ir.AnchorResult("s1", "tumor", "chr1:500-600", "PASS", "10", "10", "ok"),
+    ]
+    sections, notes = ir.aggregate(rows)
+    md = ir.render_markdown(sections, notes, "demo_cohort", Path("cohort_verify_anchors.tsv"), "2026-05-20")
+
+    # title + provenance line
+    assert md.startswith("# Interpretation — demo_cohort")
+    assert "cohort_verify_anchors.tsv" in md
+    assert "no new analysis" in md
+
+    # summary table present with the Total row
+    assert "| Sample | FAIL | REVIEW | UNVERIFIED | PASS | Total |" in md
+    assert "| **Total** | 1 | 1 | 0 | 1 | 3 |" in md
+
+    # FAIL section appears before PASS section within s1
+    assert md.index("### FAIL") < md.index("### PASS")
+
+    # FAIL region shows the per-track breakdown line
+    assert "**chr1:100-200** — FAIL" in md
+    assert "`tumor` — observed 0 vs expected 41 — FAIL — diff_ratio=0.927 (tol=0.050)" in md
+
+    # REVIEW region (chr1:300-400) lists both tracks
+    assert "**chr1:300-400** — REVIEW" in md
+
+    # PASS region collapsed to one line, no per-track breakdown
+    assert "chr1:500-600 — PASS (1/1 anchors)" in md
+
+    # empty buckets omitted: s1 has no UNVERIFIED region
+    assert "### UNVERIFIED" not in md
+
+
+def test_render_markdown_emits_notes_section():
+    rows = [ir.AnchorResult("*", "*", "*", "SKIP", "", "", "no anchors for sample s3")]
+    sections, notes = ir.aggregate(rows)
+    md = ir.render_markdown(sections, notes, "c", Path("checks.tsv"), "2026-05-20")
+    assert "## Notes" in md
+    assert "no anchors for sample s3" in md

@@ -181,3 +181,89 @@ def aggregate(
         entries.sort(key=lambda e: sort_key(e.verdict, e.region))
         sections.append(SampleSection(sample, entries, counts))
     return sections, notes
+
+
+def render_markdown(
+    sections: list[SampleSection],
+    notes: list[AnchorResult],
+    cohort_name: str,
+    source_path: Path,
+    today: str,
+) -> str:
+    """Render the cohort-wide interpretation.md. FAIL/REVIEW/UNVERIFIED
+    regions get a per-track breakdown; PASS regions collapse to one line.
+    Empty verdict buckets are omitted per sample."""
+    out: list[str] = []
+    out.append(f"# Interpretation — {cohort_name}")
+    out.append("")
+    out.append(
+        f"_Generated {today} from anchor verification (`{source_path.name}`). "
+        "Verdicts derive solely from anchor pass/fail; this file performs no "
+        "new analysis. Open the per-sample HTML report for any REVIEW / FAIL "
+        "/ UNVERIFIED region._"
+    )
+    out.append("")
+
+    # --- summary table ---
+    out.append("## Summary")
+    out.append("")
+    out.append("| Sample | FAIL | REVIEW | UNVERIFIED | PASS | Total |")
+    out.append("|--------|-----:|-------:|-----------:|-----:|------:|")
+    total = {"FAIL": 0, "REVIEW": 0, "UNVERIFIED": 0, "PASS": 0}
+    for s in sections:
+        c = s.counts
+        n = sum(c.values())
+        out.append(
+            f"| {s.sample} | {c['FAIL']} | {c['REVIEW']} | "
+            f"{c['UNVERIFIED']} | {c['PASS']} | {n} |"
+        )
+        for k in total:
+            total[k] += c[k]
+    grand = sum(total.values())
+    out.append(
+        f"| **Total** | {total['FAIL']} | {total['REVIEW']} | "
+        f"{total['UNVERIFIED']} | {total['PASS']} | {grand} |"
+    )
+    out.append("")
+
+    # --- per-sample sections ---
+    for s in sections:
+        out.append(f"## {s.sample}")
+        out.append("")
+        for verdict in ("FAIL", "REVIEW", "UNVERIFIED", "PASS"):
+            bucket = [e for e in s.entries if e.verdict == verdict]
+            if not bucket:
+                continue
+            out.append(f"### {verdict}")
+            for e in bucket:
+                if verdict == "PASS":
+                    n_ok = sum(1 for r in e.results if r.status != "SKIP")
+                    out.append(f"- {e.region} — PASS ({n_ok}/{n_ok} anchors)")
+                else:
+                    out.append(f"- **{e.region}** — {verdict}")
+                    for r in e.results:
+                        out.append(
+                            f"  - `{r.track_name}` — observed {r.observed} "
+                            f"vs expected {r.expected} — {r.status} — {r.details}"
+                        )
+            out.append("")
+
+    # --- notes (verify-cohort housekeeping rows) ---
+    if notes:
+        out.append("## Notes")
+        out.append("")
+        for r in notes:
+            out.append(f"- {r.sample}/{r.region}: {r.details or r.status}")
+        out.append("")
+
+    return "\n".join(out).rstrip("\n") + "\n"
+
+
+def render_fallback(cohort_name: str, source_path: Path) -> str:
+    """Minimal file written when no anchor verification results exist."""
+    return (
+        f"# Interpretation — {cohort_name}\n\n"
+        f"_No anchor verification results found (`{source_path}`). Verdicts "
+        "require `verify_anchors.py verify-cohort` to have run first. Open the "
+        "HTML reports directly._\n"
+    )
