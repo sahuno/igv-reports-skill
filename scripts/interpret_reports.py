@@ -46,12 +46,14 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import re
 import sys
 from datetime import date
 from pathlib import Path
 
 CHECKS_HEADER = ["sample", "track_name", "region", "status",
                  "observed", "expected", "details"]
+EXPECTED_HEADER = "\t".join(CHECKS_HEADER)
 
 # FAIL-first severity ordering for sort and section emission.
 VERDICT_ORDER = {"FAIL": 0, "REVIEW": 1, "UNVERIFIED": 2, "PASS": 3}
@@ -61,6 +63,8 @@ class MalformedChecks(Exception):
     """A checks-TSV data row could not be parsed (too few columns)."""
 
 
+# Mirrors verify_anchors.AnchorCheck field-for-field; kept local to avoid
+# importing verify_anchors (which pulls in subprocess/samtools resolution).
 @dataclasses.dataclass
 class AnchorResult:
     sample: str
@@ -88,7 +92,14 @@ def load_checks(path: Path) -> list[AnchorResult]:
             if not line:
                 continue
             if not header_seen:
-                header_seen = True  # first non-empty line is the header
+                header_seen = True
+                # Validate header content (tolerate a leading '#').
+                stripped = line.lstrip("#")
+                if stripped != EXPECTED_HEADER:
+                    raise MalformedChecks(
+                        f"{path}:1: unexpected header: {line!r} "
+                        f"(expected {EXPECTED_HEADER!r})"
+                    )
                 continue
             cols = line.split("\t")
             if len(cols) < 4:
@@ -135,10 +146,26 @@ def parse_region(region: str) -> tuple[str, int]:
         return region, 0
 
 
-def sort_key(verdict: str, region: str) -> tuple[int, str, int]:
-    """FAIL-first severity, then genomic (chrom string, start int)."""
+_CHR_NUM_RE = re.compile(r"(\d+)$")
+
+
+def _chrom_sort_key(chrom: str) -> tuple[int, str]:
+    """Natural-ish chrom ordering: trailing integer first (chr2 < chr10), then
+    the raw string for non-numeric chroms (chrX, chrM, contigs)."""
+    m = _CHR_NUM_RE.search(chrom)
+    return (int(m.group(1)) if m else 10**9, chrom)
+
+
+def sort_key(verdict: str, region: str) -> tuple[int, int, str, int]:
+    """FAIL-first severity, then natural genomic order (chrom, start)."""
+    order = VERDICT_ORDER.get(verdict)
+    if order is None:
+        raise ValueError(
+            f"sort_key: unknown verdict {verdict!r} "
+            f"(known: {list(VERDICT_ORDER)})"
+        )
     chrom, start = parse_region(region)
-    return (VERDICT_ORDER[verdict], chrom, start)
+    return (order, *_chrom_sort_key(chrom), start)
 
 
 @dataclasses.dataclass
@@ -242,6 +269,9 @@ def render_markdown(
                 else:
                     out.append(f"- **{e.region}** — {verdict}")
                     for r in e.results:
+                        if r.status == "SKIP":
+                            out.append(f"  - `{r.track_name}` — SKIP — {r.details}")
+                            continue
                         out.append(
                             f"  - `{r.track_name}` — observed {r.observed} "
                             f"vs expected {r.expected} — {r.status} — {r.details}"

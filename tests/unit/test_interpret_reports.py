@@ -250,3 +250,104 @@ def test_cli_cohort_name_override(monkeypatch, tmp_path):
     rc = _run_cli(monkeypatch, ["--checks", str(checks), "--out", str(out), "--cohort-name", "ATLL run 3"])
     assert rc == 0
     assert "Interpretation — ATLL run 3" in out.read_text()
+
+
+# ---------------------------------------------------------------------------
+# Fix 1 — load_checks header validation
+# ---------------------------------------------------------------------------
+
+def test_load_checks_no_header_raises(tmp_path):
+    """A file whose first line is a data row (no header) raises MalformedChecks."""
+    p = _write(tmp_path, (
+        "s1\ttumor\tchr2:100-200\tPASS\t56\t56\tdiff_ratio=0.000\n"
+    ))
+    with pytest.raises(ir.MalformedChecks, match="unexpected header"):
+        ir.load_checks(p)
+
+
+def test_load_checks_hash_prefixed_header_accepted(tmp_path):
+    """A valid header preceded by a '#' is tolerated."""
+    p = _write(tmp_path, (
+        "#sample\ttrack_name\tregion\tstatus\tobserved\texpected\tdetails\n"
+        "s1\ttumor\tchr2:100-200\tPASS\t56\t56\tok\n"
+    ))
+    rows = ir.load_checks(p)
+    assert len(rows) == 1
+    assert rows[0].sample == "s1"
+
+
+def test_load_checks_valid_header_only_returns_empty(tmp_path):
+    """A file with only the valid header returns [] (no data rows)."""
+    p = _write(tmp_path, "sample\ttrack_name\tregion\tstatus\tobserved\texpected\tdetails\n")
+    assert ir.load_checks(p) == []
+
+
+# ---------------------------------------------------------------------------
+# Fix 2 — sort_key raises ValueError on unknown verdict
+# ---------------------------------------------------------------------------
+
+def test_sort_key_unknown_verdict_raises_value_error():
+    with pytest.raises(ValueError, match="unknown verdict"):
+        ir.sort_key("BOGUS", "chr1:1-2")
+
+
+# ---------------------------------------------------------------------------
+# Fix 3 — natural chromosome ordering (chr2 < chr10)
+# ---------------------------------------------------------------------------
+
+def test_sort_key_natural_chrom_order():
+    """chr2 must sort before chr10 when verdict is the same."""
+    entries = [
+        ("chr10:100-200", "FAIL"),
+        ("chr2:100-200", "FAIL"),
+    ]
+    ordered = sorted(entries, key=lambda e: ir.sort_key(e[1], e[0]))
+    assert ordered[0][0] == "chr2:100-200"
+    assert ordered[1][0] == "chr10:100-200"
+
+
+# ---------------------------------------------------------------------------
+# Fix 4 — SKIP rows render without double-space artifact
+# ---------------------------------------------------------------------------
+
+def test_render_markdown_skip_row_no_double_space():
+    """UNVERIFIED (all-SKIP) region renders clean '— SKIP —' lines."""
+    rows = [
+        ir.AnchorResult("s1", "tumor", "chr1:100-200", "SKIP", "", "", "not rendered"),
+    ]
+    sections, notes = ir.aggregate(rows)
+    md = ir.render_markdown(sections, notes, "test", Path("checks.tsv"), "2026-05-20")
+    # Must contain the clean SKIP line
+    assert "- `tumor` — SKIP — not rendered" in md
+    # Must NOT contain double-space artifact patterns
+    assert "observed  vs" not in md
+    assert "expected  —" not in md
+
+
+# ---------------------------------------------------------------------------
+# Fix 6 — happy-path tests
+# ---------------------------------------------------------------------------
+
+def test_render_markdown_no_notes_section_when_empty():
+    """render_markdown output does NOT contain '## Notes' when notes=[]."""
+    rows = [
+        ir.AnchorResult("s1", "tumor", "chr1:100-200", "PASS", "10", "10", "ok"),
+    ]
+    sections, notes = ir.aggregate(rows)
+    assert notes == []
+    md = ir.render_markdown(sections, notes, "c", Path("checks.tsv"), "2026-05-20")
+    assert "## Notes" not in md
+
+
+def test_render_markdown_all_pass_no_fail_review_unverified_headings():
+    """An all-PASS cohort renders no ### FAIL / ### REVIEW / ### UNVERIFIED."""
+    rows = [
+        ir.AnchorResult("s1", "tumor", "chr1:100-200", "PASS", "10", "10", "ok"),
+        ir.AnchorResult("s1", "meth",  "chr1:100-200", "PASS", "5",  "5",  "ok"),
+        ir.AnchorResult("s2", "tumor", "chr2:200-300", "PASS", "8",  "8",  "ok"),
+    ]
+    sections, notes = ir.aggregate(rows)
+    md = ir.render_markdown(sections, notes, "c", Path("checks.tsv"), "2026-05-20")
+    assert "### FAIL" not in md
+    assert "### REVIEW" not in md
+    assert "### UNVERIFIED" not in md
