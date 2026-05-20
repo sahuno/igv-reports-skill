@@ -461,6 +461,38 @@ Worked regression: `tests/integration/anchor_verify/scenarios.sh` builds a
 violation, min-bound violation, corrupted slice, missing anchor) triggers
 the expected PASS / FAIL / SKIP outcome.
 
+### Triage interpretation (`interpret_reports.py`) — human-first reading surface
+
+After `verify-cohort` produces a checks TSV, `interpret_reports.py` rolls it
+up into a single cohort-wide `interpretation.md`: a summary table (sample ×
+verdict counts) then per-sample sections with a per-region verdict.
+
+```bash
+python scripts/interpret_reports.py \
+    --checks results/<run>/reports/cohort_verify_anchors.tsv \
+    --out    results/<run>/reports/interpretation.md
+```
+
+Per-region verdict, derived **solely** from the anchor results (no new
+thresholds):
+
+- `PASS` — every non-SKIP anchor for the region passed
+- `FAIL` — every non-SKIP anchor failed
+- `REVIEW` — mixed pass/fail across the region's tracks
+- `UNVERIFIED` — every anchor was SKIP (region not rendered, or no tracks
+  matched) — distinct from FAIL: nothing was checked
+
+Regions sort FAIL-first (FAIL → REVIEW → UNVERIFIED → PASS) so the ones
+needing attention sit on top of each sample section; FAIL/REVIEW/UNVERIFIED
+get a per-track breakdown (observed vs expected + the reason), PASS collapses
+to one line. If the checks TSV is missing or empty, a fallback file points
+the reader at the HTML instead. It's a reporting tool — it always exits 0 on a
+successful write; `verify_anchors --fail-on-fail` remains the CI gate.
+
+Worked regression: `tests/integration/interpret/scenarios.sh` renders a
+synthetic cohort and asserts the summary totals, FAIL-first ordering, the
+malformed-input exit-2 path, and the missing-input fallback.
+
 ## Output and workflow logging
 
 Every run logs to `logs/run_<YYYYMMDD_HHMMSS>.log` next to the reports dir.
