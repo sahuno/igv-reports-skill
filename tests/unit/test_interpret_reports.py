@@ -194,3 +194,59 @@ def test_render_markdown_emits_notes_section():
     md = ir.render_markdown(sections, notes, "c", Path("checks.tsv"), "2026-05-20")
     assert "## Notes" in md
     assert "no anchors for sample s3" in md
+
+
+def _run_cli(monkeypatch, argv):
+    monkeypatch.setattr(sys, "argv", ["interpret_reports.py", *argv])
+    try:
+        ir.main()
+        return 0
+    except SystemExit as e:
+        return e.code or 0
+
+
+def test_cli_writes_interpretation(monkeypatch, tmp_path):
+    checks = tmp_path / "checks.tsv"
+    checks.write_text(
+        "sample\ttrack_name\tregion\tstatus\tobserved\texpected\tdetails\n"
+        "s1\ttumor\tchr1:100-200\tPASS\t10\t10\tok\n"
+    )
+    out = tmp_path / "reports" / "interpretation.md"
+    rc = _run_cli(monkeypatch, ["--checks", str(checks), "--out", str(out)])
+    assert rc == 0
+    assert out.is_file()
+    text = out.read_text()
+    assert "# Interpretation —" in text
+    # cohort name defaults to the --out parent dir name
+    assert "Interpretation — reports" in text
+
+
+def test_cli_missing_checks_writes_fallback(monkeypatch, tmp_path):
+    out = tmp_path / "interpretation.md"
+    rc = _run_cli(monkeypatch, ["--checks", str(tmp_path / "nope.tsv"), "--out", str(out)])
+    assert rc == 0
+    assert "No anchor verification results found" in out.read_text()
+
+
+def test_cli_malformed_checks_exits_2(monkeypatch, tmp_path):
+    checks = tmp_path / "checks.tsv"
+    checks.write_text(
+        "sample\ttrack_name\tregion\tstatus\tobserved\texpected\tdetails\n"
+        "only\ttwo\n"
+    )
+    out = tmp_path / "interpretation.md"
+    rc = _run_cli(monkeypatch, ["--checks", str(checks), "--out", str(out)])
+    assert rc == 2
+    assert not out.exists()
+
+
+def test_cli_cohort_name_override(monkeypatch, tmp_path):
+    checks = tmp_path / "checks.tsv"
+    checks.write_text(
+        "sample\ttrack_name\tregion\tstatus\tobserved\texpected\tdetails\n"
+        "s1\ttumor\tchr1:100-200\tPASS\t10\t10\tok\n"
+    )
+    out = tmp_path / "interpretation.md"
+    rc = _run_cli(monkeypatch, ["--checks", str(checks), "--out", str(out), "--cohort-name", "ATLL run 3"])
+    assert rc == 0
+    assert "Interpretation — ATLL run 3" in out.read_text()

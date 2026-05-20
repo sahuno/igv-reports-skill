@@ -267,3 +267,52 @@ def render_fallback(cohort_name: str, source_path: Path) -> str:
         "require `verify_anchors.py verify-cohort` to have run first. Open the "
         "HTML reports directly._\n"
     )
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    ap.add_argument("--checks", required=True,
+                    help="verify_anchors verify-cohort/verify checks TSV")
+    ap.add_argument("--out", required=True,
+                    help="path to write interpretation.md")
+    ap.add_argument("--cohort-name", default=None,
+                    help="title string (default: --out parent directory name)")
+    args = ap.parse_args()
+
+    checks_path = Path(args.checks)
+    out_path = Path(args.out)
+    cohort_name = args.cohort_name or out_path.resolve().parent.name
+
+    try:
+        results = load_checks(checks_path)
+    except MalformedChecks as e:
+        sys.stderr.write(f"ERROR: {e}\n")
+        sys.exit(2)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not results:
+        out_path.write_text(render_fallback(cohort_name, checks_path))
+        sys.stderr.write(
+            f"[interpret_reports] no anchor results in {checks_path} — "
+            f"wrote fallback {out_path}\n"
+        )
+        sys.exit(0)
+
+    sections, notes = aggregate(results)
+    md = render_markdown(sections, notes, cohort_name, checks_path,
+                         date.today().isoformat())
+    out_path.write_text(md)
+    n_regions = sum(sum(s.counts.values()) for s in sections)
+    sys.stderr.write(
+        f"[interpret_reports] wrote {out_path} "
+        f"({len(sections)} samples, {n_regions} regions)\n"
+    )
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()
