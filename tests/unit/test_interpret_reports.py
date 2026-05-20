@@ -120,3 +120,33 @@ def test_sort_key_orders_fail_first_then_genomic():
     # the two FAILs keep genomic order (100 before 300)
     assert ordered[0][0] == "chr1:100-200"
     assert ordered[1][0] == "chr1:300-400"
+
+
+def test_aggregate_groups_counts_and_sorts():
+    rows = [
+        ir.AnchorResult("s1", "tumor", "chr1:500-600", "PASS", "10", "10", "ok"),
+        ir.AnchorResult("s1", "tumor", "chr1:100-200", "FAIL", "0", "41", "diff"),
+        ir.AnchorResult("s1", "meth", "chr1:300-400", "PASS", "9", "9", "ok"),
+        ir.AnchorResult("s1", "tumor", "chr1:300-400", "FAIL", "0", "9", "diff"),  # -> REVIEW
+        ir.AnchorResult("s2", "tumor", "chr2:1-2", "SKIP", "", "", "not rendered"),  # -> UNVERIFIED
+        ir.AnchorResult("*", "*", "*", "SKIP", "", "", "no anchors for sample s3"),  # note
+    ]
+    sections, notes = ir.aggregate(rows)
+
+    # one note row routed aside, not a region verdict
+    assert len(notes) == 1
+    assert notes[0].details.startswith("no anchors")
+
+    # two samples, sorted by name
+    assert [s.sample for s in sections] == ["s1", "s2"]
+
+    s1 = sections[0]
+    # counts: FAIL chr1:100-200, REVIEW chr1:300-400, PASS chr1:500-600
+    assert s1.counts == {"FAIL": 1, "REVIEW": 1, "UNVERIFIED": 0, "PASS": 1}
+    # FAIL-first ordering
+    assert [e.verdict for e in s1.entries] == ["FAIL", "REVIEW", "PASS"]
+    assert s1.entries[0].region == "chr1:100-200"
+
+    s2 = sections[1]
+    assert s2.counts == {"FAIL": 0, "REVIEW": 0, "UNVERIFIED": 1, "PASS": 0}
+    assert s2.entries[0].verdict == "UNVERIFIED"

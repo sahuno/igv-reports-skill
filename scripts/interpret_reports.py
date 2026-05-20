@@ -139,3 +139,45 @@ def sort_key(verdict: str, region: str) -> tuple[int, str, int]:
     """FAIL-first severity, then genomic (chrom string, start int)."""
     chrom, start = parse_region(region)
     return (VERDICT_ORDER[verdict], chrom, start)
+
+
+@dataclasses.dataclass
+class RegionEntry:
+    region: str
+    verdict: str
+    results: list[AnchorResult]
+
+
+@dataclasses.dataclass
+class SampleSection:
+    sample: str
+    entries: list[RegionEntry]            # sorted FAIL-first then genomic
+    counts: dict[str, int]                # verdict -> region count
+
+
+def aggregate(
+    results: list[AnchorResult],
+) -> tuple[list[SampleSection], list[AnchorResult]]:
+    """Group results into per-sample sections with per-region verdicts and
+    summary counts. Returns (sections, notes); `notes` holds the
+    verify-cohort housekeeping rows (sample='*' or region='*') that aren't
+    region verdicts. Sections are sorted by sample name; entries within a
+    section are sorted FAIL-first then genomic."""
+    notes = [r for r in results if r.sample == "*" or r.region == "*"]
+    real = [r for r in results if r.sample != "*" and r.region != "*"]
+
+    by_sample: dict[str, dict[str, list[AnchorResult]]] = {}
+    for r in real:
+        by_sample.setdefault(r.sample, {}).setdefault(r.region, []).append(r)
+
+    sections: list[SampleSection] = []
+    for sample in sorted(by_sample):
+        counts = {"FAIL": 0, "REVIEW": 0, "UNVERIFIED": 0, "PASS": 0}
+        entries: list[RegionEntry] = []
+        for region, rs in by_sample[sample].items():
+            verdict = region_verdict(rs)
+            counts[verdict] += 1
+            entries.append(RegionEntry(region, verdict, rs))
+        entries.sort(key=lambda e: sort_key(e.verdict, e.region))
+        sections.append(SampleSection(sample, entries, counts))
+    return sections, notes
