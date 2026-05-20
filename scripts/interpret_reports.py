@@ -106,3 +106,19 @@ def load_checks(path: Path) -> list[AnchorResult]:
                 details=d["details"],
             ))
     return results
+
+
+def region_verdict(results: list[AnchorResult]) -> str:
+    """Roll a single region's per-track results into one verdict.
+
+    UNVERIFIED if every anchor is SKIP; otherwise consider only non-SKIP
+    anchors: PASS if all PASS, FAIL if all FAIL, REVIEW if mixed."""
+    non_skip = [r for r in results if r.status != "SKIP"]
+    if not non_skip:
+        return "UNVERIFIED"
+    statuses = {r.status for r in non_skip}
+    if statuses == {"PASS"}:
+        return "PASS"
+    if statuses == {"FAIL"}:
+        return "FAIL"
+    return "REVIEW"

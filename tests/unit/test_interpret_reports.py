@@ -70,3 +70,30 @@ def test_load_checks_malformed_raises(tmp_path):
     ))
     with pytest.raises(ir.MalformedChecks):
         ir.load_checks(p)
+
+
+def _res(status):
+    return ir.AnchorResult("s", "t", "chr1:1-2", status)
+
+
+def test_region_verdict_all_pass():
+    assert ir.region_verdict([_res("PASS"), _res("PASS")]) == "PASS"
+
+
+def test_region_verdict_all_fail():
+    assert ir.region_verdict([_res("FAIL"), _res("FAIL")]) == "FAIL"
+
+
+def test_region_verdict_mixed_is_review():
+    assert ir.region_verdict([_res("PASS"), _res("FAIL")]) == "REVIEW"
+
+
+def test_region_verdict_all_skip_is_unverified():
+    assert ir.region_verdict([_res("SKIP"), _res("SKIP")]) == "UNVERIFIED"
+
+
+def test_region_verdict_skip_ignored_when_others_present():
+    # PASS + SKIP -> PASS (SKIP doesn't downgrade a clean region)
+    assert ir.region_verdict([_res("PASS"), _res("SKIP")]) == "PASS"
+    # FAIL + SKIP -> FAIL
+    assert ir.region_verdict([_res("FAIL"), _res("SKIP")]) == "FAIL"
