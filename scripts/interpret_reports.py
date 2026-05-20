@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""interpret_reports.py — triage companion for create_report cohorts.
+
+Reads an anchor-verification checks TSV (produced by
+`verify_anchors.py verify-cohort` / `verify`) and rolls per-track
+PASS/FAIL/SKIP results up into a per-region verdict, written as a single
+cohort-wide `interpretation.md`. Lead with verdicts, sort FAIL-first, give
+just enough per-track detail to triage without opening the HTML.
+
+This script interprets output of `igv-reports` (`create_report`) maintained
+by the IGV team at the Broad Institute (MIT, © 2018-2019 The Broad Institute
+and The Regents of the University of California;
+<https://github.com/igvteam/igv-reports>). The triage/interpretation layer
+in this file is added by this repo, not by upstream. See CREDITS.md.
+
+Author: Samuel Ahuno
+Purpose:
+  The verifiers (verify_report / verify_cohort / verify_anchors) produce
+  machine-first artifacts: one row per (sample, track, region). A researcher
+  opening N HTMLs has no single place that answers "which regions need a
+  closer look?". This script is the human-first reading surface: one file,
+  opened once, regions ordered so the ones needing attention sit on top.
+
+  Verdicts derive SOLELY from the checks TSV's status column (no new
+  thresholds, no re-analysis):
+    PASS        — every non-SKIP anchor for the region is PASS
+    FAIL        — every non-SKIP anchor for the region is FAIL
+    REVIEW      — mixed PASS and FAIL
+    UNVERIFIED  — all anchors for the region are SKIP (region not rendered,
+                  or no tracks matched) — distinct from FAIL: nothing checked.
+
+  Input: the checks TSV written by verify_anchors.write_checks, columns:
+    sample  track_name  region  status  observed  expected  details
+  (header line is NOT '#'-prefixed; region is 'chrom:start-end').
+
+Typical use:
+  python interpret_reports.py \\
+      --checks results/<run>/cohort_verify_anchors.tsv \\
+      --out    results/<run>/reports/interpretation.md
+
+Skill location:
+  /data1/greenbab/users/ahunos/apps/llm_configs/claude/skills/igv-reports/
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import sys
+from datetime import date
+from pathlib import Path
+
+CHECKS_HEADER = ["sample", "track_name", "region", "status",
+                 "observed", "expected", "details"]
+
+# FAIL-first severity ordering for sort and section emission.
+VERDICT_ORDER = {"FAIL": 0, "REVIEW": 1, "UNVERIFIED": 2, "PASS": 3}
+
+
+class MalformedChecks(Exception):
+    """A checks-TSV data row could not be parsed (too few columns)."""
+
+
+@dataclasses.dataclass
+class AnchorResult:
+    sample: str
+    track_name: str
+    region: str
+    status: str
+    observed: str = ""
+    expected: str = ""
+    details: str = ""
+
+
+def load_checks(path: Path) -> list[AnchorResult]:
+    """Parse a verify_anchors checks TSV into AnchorResult rows.
+
+    Returns [] when the file is absent or header-only (the no-verification
+    fallback case). Raises MalformedChecks on a data row with < 4 columns,
+    consistent with verify_anchors.load_anchors' fail-loud parsing."""
+    if not path.exists():
+        return []
+    results: list[AnchorResult] = []
+    with path.open() as fh:
+        header_seen = False
+        for i, line in enumerate(fh, start=1):
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            if not header_seen:
+                header_seen = True  # first non-empty line is the header
+                continue
+            cols = line.split("\t")
+            if len(cols) < 4:
+                raise MalformedChecks(
+                    f"{path}:{i}: expected >= 4 tab-separated columns "
+                    f"({CHECKS_HEADER}), got {len(cols)}: {cols!r}"
+                )
+            if len(cols) < len(CHECKS_HEADER):
+                cols += [""] * (len(CHECKS_HEADER) - len(cols))
+            d = dict(zip(CHECKS_HEADER, cols))
+            results.append(AnchorResult(
+                sample=d["sample"], track_name=d["track_name"],
+                region=d["region"], status=d["status"],
+                observed=d["observed"], expected=d["expected"],
+                details=d["details"],
+            ))
+    return results
