@@ -39,6 +39,7 @@ script-files = [
     "scripts/verify_report.py",
     "scripts/verify_cohort.py",
     "scripts/verify_anchors.py",
+    "scripts/interpret_reports.py",
     "scripts/generate_tracks_json.py",
     "scripts/prep_track.sh",
 ]
